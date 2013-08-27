@@ -1,0 +1,23 @@
+target
+
+# Run sbt gen-idea to generate the IDEA files, we only keep a few of them in Git
+.idea/*
+.idea_modules/*
+!.idea/inspectionProfiles
+!.idea/encodings.xml
+!.idea/projectCodeStyle.xml
+!.idea/codeStyleSettings.xml
+!.idea/vcs.xml
+
+lib_managed
+src_managed
+project/boot
+local-repo
+*.ncb
+*.suo
+*.obj
+EFGPref.ini
+.history
+scratch.*
+local.sbt
+*.caliper.json
