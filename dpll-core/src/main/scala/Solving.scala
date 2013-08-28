@@ -1,3 +1,5 @@
+import scala.collection.mutable
+
 // naive CNF translation and simple DPLL solver
 trait Solving extends Logic {
   trait CNF extends PropositionalLogic {
@@ -24,7 +26,6 @@ trait Solving extends Logic {
 
     private def merge(a: Clause, b: Clause) = a ++ b
 
-        // to govern how much time we spend analyzing matches for unreachability/exhaustivity
     object AnalysisBudget {
       val max = 256
 
@@ -127,38 +128,33 @@ trait Solving extends Logic {
 
     // returns all solutions, if any (TODO: better infinite recursion backstop -- detect fixpoint??)
     def findAllModelsFor(f: Formula): List[Model] = {
-      val vars: Set[Sym] = f.flatMap(_ collect {case l: Lit => l.sym}).toSet
+      val vars: Set[Sym] = f.flatMap(_ collect {
+        case l: Lit => l.sym
+      }).toSet
       // debug.patmat("vars "+ vars)
       // the negation of a model -(S1=True/False /\ ... /\ SN=True/False) = clause(S1=False/True, ...., SN=False/True)
-      def negateModel(m: Model) = clause(m.toSeq.map{ case (sym, pos) => Lit(sym, !pos) } : _*)
+      def negateModel(m: Model) = clause(m.toSeq.map {
+        case (sym, pos) => Lit(sym, !pos)
+      }: _*)
 
-      def findAllModels(f: Formula, models: List[Model], recursionDepthAllowed: Int = 10): List[Model]=
+      def findAllModels(f: Formula, models: List[Model], recursionDepthAllowed: Int = 10): List[Model] = {
         if (recursionDepthAllowed == 0) models
-//          debug.patmat("find all models for\n"+ cnfString(f))
-          val model = findModelFor(f)
-          // if we found a solution, conjunct the formula with the model's negation and recurse
-          if (model ne NoModel) {
-            val unassigned = (vars -- model.keySet).toList
-//            debug.patmat("unassigned "+ unassigned +" in "+ model)
-            def force(lit: Lit) = {
-              val model = withLit(findModelFor(dropUnit(f, lit)), lit)
-              if (model ne NoModel) List(model)
-              else Nil
-            }
-            val forced = unassigned flatMap { s =>
-              force(Lit(s, pos = true)) ++ force(Lit(s, pos = false))
-            }
-//            debug.patmat("forced "+ forced)
-            val negated = negateModel(model)
-            findAllModels(f :+ negated, model :: models, recursionDepthAllowed - 1)
-          }
-          else models
+        //          debug.patmat("find all models for\n"+ cnfString(f))
+        val model = findModelFor(f)
+        // if we found a solution, conjunct the formula with the model's negation and recurse
+        if (model ne NoModel) {
+          val unassigned = (vars -- model.keySet).toList
+          //            debug.patmat("unassigned "+ unassigned +" in "+ model)
+          val negated = negateModel(model)
+          findAllModels(f :+ negated, model :: models, recursionDepthAllowed - 1)
         }
+        else models
+      }
 
       println("models")
       val models = findAllModels(f, Nil)
       for {
-      m <- models
+        m <- models
       } {
         println("*** model ***")
         println(modelToString(m))
@@ -195,9 +191,7 @@ trait Solving extends Logic {
     def findModelFor(f: Formula): Model = {
       @inline def orElse(a: Model, b: => Model) = if (a ne NoModel) a else b
 
-      debug.patmat("DPLL\n"+ cnfString(f))
-
-      val start = if (Statistics.canEnable) Statistics.startTimer(patmatAnaDPLL) else null
+//      debug.patmat("DPLL\n"+ cnfString(f))
 
       val satisfiableWithModel: Model =
         if (f isEmpty) EmptyModel
@@ -234,8 +228,6 @@ trait Solving extends Logic {
               orElse(findModelFor(f :+ clause(split)), findModelFor(f :+ clause(-split)))
             }
         }
-
-        if (Statistics.canEnable) Statistics.stopTimer(patmatAnaDPLL, start)
 
         satisfiableWithModel
     }
