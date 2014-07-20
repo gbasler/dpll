@@ -114,7 +114,7 @@ trait Solving extends Logic {
     class Lit(val sym: Sym, val pos: Boolean) {
       override def toString = if (!pos) "-"+ sym.toString else sym.toString
       override def equals(o: Any) = o match {
-        case o: Lit => (o.sym eq sym) && (o.pos == pos)
+        case o: Lit => (o.sym == sym) && (o.pos == pos)
         case _ => false
       }
       override def hashCode = sym.hashCode + pos.hashCode
@@ -143,7 +143,7 @@ trait Solving extends Logic {
         val model = findModelFor(f)
         // if we found a solution, conjunct the formula with the model's negation and recurse
         if (model ne NoModel) {
-          val unassigned = (vars -- model.keySet).toList
+          val unassigned: List[Sym] = (vars -- model.keySet).toList
           //            debug.patmat("unassigned "+ unassigned +" in "+ model)
           val negated = negateModel(model)
           findAllModels(f :+ negated, model :: models, recursionDepthAllowed - 1)
@@ -151,26 +151,8 @@ trait Solving extends Logic {
         else models
       }
 
-      println("models")
       val models = findAllModels(f, Nil)
-      for {
-        m <- models
-      } {
-        println("*** model ***")
-        println(modelToString(m))
-      }
-      //      println(f.mkString(", "))
       models
-    }
-
-    private def modelToString(model: Model): String = {
-      val keys = model.keys.toSeq.sortBy(_.toString)
-      val s = for {
-        k <- keys
-      } yield {
-        s"${k} = ${model(k)}"
-      }
-      s.mkString("\n")
     }
 
     private def withLit(res: Model, l: Lit): Model = if (res eq NoModel) NoModel else res + (l.sym -> l.pos)
