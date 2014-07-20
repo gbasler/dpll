@@ -2,6 +2,29 @@ import scala.collection.mutable
 
 trait Logic {
 
+  private def max(xs: Seq[Int]) = if (xs isEmpty) 0 else xs max
+  private def alignedColumns(cols: Seq[Any]): Seq[String] = {
+    def toString(x: Any) = if (x == null) "" else x.toString
+    if (cols.isEmpty || cols.tails.isEmpty) cols map toString
+    else {
+      val colLens = cols map (c => toString(c).length)
+      val maxLen = max(colLens)
+      val avgLen = colLens.sum/colLens.length
+      val goalLen = maxLen min avgLen*2
+      def pad(s: String) = {
+        val toAdd = ((goalLen - s.length) max 0) + 2
+        (" " * (toAdd/2)) + s + (" " * (toAdd/2 + (toAdd%2)))
+      }
+      cols map (x => pad(toString(x)))
+    }
+  }
+
+  def alignAcrossRows(xss: List[List[Any]], sep: String, lineSep: String = "\n"): String = {
+    val maxLen = max(xss map (_.length))
+    val padded = xss map (xs => xs ++ List.fill(maxLen - xs.length)(null))
+    padded.transpose.map(alignedColumns).transpose map (_.mkString(sep)) mkString(lineSep)
+  }
+
   trait PropositionalLogic {
     type Type
     type Tree
@@ -63,19 +86,24 @@ trait Logic {
     case object False extends Prop
 
     // symbols are propositions
-    case class Sym(variable: String) extends Prop {
-      override def toString = variable
+    class Sym(variable: String) extends Prop {
+      val id: Int = Sym.nextSymId
+
+      override def toString = variable + "#" + id
     }
 
-//    object Sym {
-//      private val uniques: HashSet[Sym] = new HashSet("uniques", 512)
-//      def apply(variable: Var, const: Const): Sym = {
-//        val newSym = new UniqueSym(variable, const)
-//        (uniques findEntryOrUpdate newSym)
-//      }
-//      private def nextSymId = {_symId += 1; _symId}; private var _symId = 0
-//      implicit val SymOrdering: Ordering[Sym] = Ordering.by(_.id)
-//    }
+    object Sym {
+      private val uniques: mutable.HashSet[Sym] = new mutable.HashSet()
+      def apply(variable: String): Sym = {
+        val newSym = new Sym(variable)
+        uniques.find(_ == newSym).getOrElse{
+          uniques += newSym
+          newSym
+        }
+      }
+      private def nextSymId = {_symId += 1; _symId}; private var _symId = 0
+      implicit val SymOrdering: Ordering[Sym] = Ordering.by(_.id)
+    }
 
     trait PropTraverser {
       def apply(x: Prop): Unit = x match {
@@ -128,7 +156,7 @@ trait Logic {
     // may throw an AnalysisBudget.Exception
     def eqFreePropToSolvable(p: Prop): Formula
 
-    type Model = Map[Sym, Boolean]
+    type Model = collection.immutable.SortedMap[Sym, Boolean]
     val EmptyModel: Model
     val NoModel: Model
 

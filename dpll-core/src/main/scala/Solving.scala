@@ -1,5 +1,16 @@
 import Collections._
+import org.sat4j.core.Vec
+import org.sat4j.core.VecInt
+import org.sat4j.minisat.SolverFactory
+import org.sat4j.specs.ContradictionException
+import org.sat4j.specs.ISolver
+import org.sat4j.specs.IVec
+import org.sat4j.specs.IVecInt
+import org.sat4j.specs.TimeoutException
+import org.sat4j.tools.ModelIterator
 
+import scala.annotation.tailrec
+import scala.collection.immutable.SortedSet
 import scala.collection.mutable
 
 // naive CNF translation and simple DPLL solver
@@ -221,4 +232,164 @@ trait Solving extends Logic {
       satisfiableWithModel
     }
   }
+
+  // simple wrapper around a SAT solver
+  trait SatSolver extends CNF {
+    // a literal is a (possibly negated) variable
+    def Lit(sym: Sym, pos: Boolean = true) = new Lit(sym, pos)
+    class Lit(val sym: Sym, val pos: Boolean) {
+      override def toString = if (!pos) "-"+ sym.toString else sym.toString
+      override def equals(o: Any) = o match {
+        case o: Lit => (o.sym eq sym) && (o.pos == pos)
+        case _ => false
+      }
+      override def hashCode = sym.hashCode + pos.hashCode
+
+      def unary_- = Lit(sym, !pos)
+    }
+
+    def cnfString(f: Formula) = alignAcrossRows(f map (_.toList) toList, "\\/", " /\\\n")
+
+    // adapted from http://lara.epfl.ch/w/sav10:simple_sat_solver (original by Hossein Hojjat)
+    val EmptyModel = collection.immutable.SortedMap.empty[Sym, Boolean]
+    val NoModel: Model = null
+
+    def printModels(models: List[Model]) {
+      val groupedByKey = models.groupBy {
+        model => model.keySet
+      }.mapValues {
+        models =>
+          models.sortWith {
+            case (a, b) =>
+            val keys = a.keys
+            val decider = keys.dropWhile(key => a(key) == b(key))
+            decider.headOption.map(key => a(key) < b(key)).getOrElse(false)
+          }
+      }
+
+      val sortedByKeys: Seq[(SortedSet[Sym], List[Model])] = groupedByKey.toSeq.sortBy {
+        case (syms, models) => syms.map(_.id).toIterable
+      }
+
+      for {
+        (keys, models) <- sortedByKeys
+        model <- models
+      } {
+        println(model)
+      }
+    }
+
+    def findModelFor(f: Formula): Model = {
+//      debug.patmat(s"searching for one model for:\n${cnf.dimacs}")
+      val solver = SolverFactory.newDefault()
+      //      solver.setTimeoutMs(timeout)
+
+      val symForVar: Map[Int, Sym] = (for {
+        s <- f
+        l <- s
+      } yield {
+        l.sym.id -> l.sym
+      }).toMap
+
+      val satisfiableWithModel = try {
+        solver.addAllClauses(clausesForFormula(f))
+        if (solver.isSatisfiable()) {
+          extractModel(solver, symForVar)
+        } else {
+          NoModel
+        }
+      } catch {
+        case _: ContradictionException =>
+          // TODO not sure if it's ok for this to happen since we have constant propagation
+          NoModel
+        case _: TimeoutException       =>
+          throw AnalysisBudget.exceeded
+      }
+
+      println("onemodel")
+      printModels(List(satisfiableWithModel))
+
+      satisfiableWithModel
+    }
+
+    // returns all solutions, if any
+    def findAllModelsFor(f: Formula): List[Model] = {
+//      debug.patmat(s"searching for all models for:\n${cnf.dimacs}")
+
+      val solver: ModelIterator = new ModelIterator(SolverFactory.newDefault())
+      //      solver.setTimeoutMs(timeout)
+
+      val symForVar: Map[Int, Sym] = (for {
+        s <- f
+        l <- s
+      } yield {
+        l.sym.id ->l.sym
+      }).toMap
+
+      //      val start = if (Statistics.canEnable) Statistics.startTimer(patmatAnaSAT) else null
+      val models = try {
+        @tailrec
+        def allModels(acc: List[Model] = Nil): List[Model] = if (solver.isSatisfiable()) {
+          val valuation = extractModel(solver, symForVar)
+          allModels(valuation :: acc)
+        } else {
+          acc
+        }
+
+        solver.addAllClauses(clausesForFormula(f))
+
+        allModels()
+      } catch {
+        case _: ContradictionException =>
+          // TODO not sure if it's ok for this to happen since we have constant propagation
+          Nil
+        case _: TimeoutException       =>
+          throw AnalysisBudget.exceeded
+      }
+
+      println("problem")
+      println(cnfString(f))
+      println("allmodels")
+      printModels(models)
+
+      models
+    }
+
+    //      if (Statistics.canEnable) Statistics.stopTimer(patmatAnaSAT, start)
+    private def clausesForFormula(f: Formula): IVec[IVecInt] = {
+      def dimacs(lit: Lit) = if(lit.pos) lit.sym.id else -lit.sym.id
+      val clauses: Array[IVecInt] = f.toArray.map(clause => new VecInt(clause.map(dimacs).toArray))
+      val cl = new Vec(clauses)
+      println(cl)
+      cl
+    }
+
+    private def extractModel(solver: ISolver, symForVar: Map[Int, Sym]): Model = {
+      val model = solver.model()
+
+      val model0 = model.toSet
+      require(model.length == model0.size, "literal lost")
+
+      object PolarityForVar {
+        def unapply(v: Int): Option[Boolean] = {
+          if (model0.contains(v)) {
+            Some(true)
+          } else if (model0.contains(-v)) {
+            Some(false)
+          } else {
+            // literal has no influence on formula
+            // sys.error(s"Literal not found ${lit} (should assume nondet)")
+            // (if uncommented this error causes the regression tests to fail)
+            // TODO: not sure if just omitting is causing other problems
+            None
+          }
+        }
+      }
+      // don't extract intermediate literals
+      collection.immutable.SortedMap(symForVar.toSeq.collect {
+        case (PolarityForVar(polarity), sym) => sym -> polarity
+      }: _*)
+    }
+  }
+
 }
