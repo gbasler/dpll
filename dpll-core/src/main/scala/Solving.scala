@@ -1,3 +1,5 @@
+import Collections._
+
 import scala.collection.mutable
 
 // naive CNF translation and simple DPLL solver
@@ -14,9 +16,16 @@ trait Solving extends Logic {
     type Formula = FormulaBuilder
     def formula(c: Clause*): Formula = ArrayBuffer(c: _*)
 
-    type Clause  = Set[Lit]
+    type Clause  = collection.Set[Lit]
     // a clause is a disjunction of distinct literals
-    def clause(l: Lit*): Clause = l.toSet
+    def clause(l: Lit*): Clause = (
+      if (l.lengthCompare(1) <= 0) {
+        l.toSet // SI-8531 Avoid LinkedHashSet's bulk for 0 and 1 element clauses
+      } else {
+        // neg/t7020.scala changes output 1% of the time, the non-determinism is quelled with this linked set
+        mutable.LinkedHashSet(l: _*)
+      }
+    )
 
     type Lit
     def Lit(sym: Sym, pos: Boolean = true): Lit
@@ -123,7 +132,7 @@ trait Solving extends Logic {
     }
 
     // adapted from http://lara.epfl.ch/w/sav10:simple_sat_solver (original by Hossein Hojjat)
-    val EmptyModel = Map.empty[Sym, Boolean]
+    val EmptyModel = collection.immutable.SortedMap.empty[Sym, Boolean]
     val NoModel: Model = null
 
     // returns all solutions, if any (TODO: better infinite recursion backstop -- detect fixpoint??)
@@ -173,8 +182,6 @@ trait Solving extends Logic {
     def findModelFor(f: Formula): Model = {
       @inline def orElse(a: Model, b: => Model) = if (a ne NoModel) a else b
 
-//      debug.patmat("DPLL\n"+ cnfString(f))
-
       val satisfiableWithModel: Model =
         if (f isEmpty) EmptyModel
         else if(f exists (_.isEmpty)) NoModel
@@ -185,15 +192,15 @@ trait Solving extends Logic {
             withLit(findModelFor(dropUnit(f, unitLit)), unitLit)
           case _ =>
             // partition symbols according to whether they appear in positive and/or negative literals
-            val pos = new mutable.HashSet[Sym]()
-            val neg = new mutable.HashSet[Sym]()
-            f.foreach{_.foreach{ lit =>
-              if (lit.pos) pos += lit.sym else neg += lit.sym
-            }}
+            // SI-7020 Linked- for deterministic counter examples.
+            val pos = new mutable.LinkedHashSet[Sym]()
+            val neg = new mutable.LinkedHashSet[Sym]()
+            mforeach(f)(lit => if (lit.pos) pos += lit.sym else neg += lit.sym)
+
             // appearing in both positive and negative
-            val impures = pos intersect neg
+            val impures: mutable.LinkedHashSet[Sym] = pos intersect neg
             // appearing only in either positive/negative positions
-            val pures = (pos ++ neg) -- impures
+            val pures: mutable.LinkedHashSet[Sym] = (pos ++ neg) -- impures
 
             if (pures nonEmpty) {
               val pureSym = pures.head
@@ -211,7 +218,7 @@ trait Solving extends Logic {
             }
         }
 
-        satisfiableWithModel
+      satisfiableWithModel
     }
   }
 }

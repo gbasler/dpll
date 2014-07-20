@@ -67,6 +67,16 @@ trait Logic {
       override def toString = variable
     }
 
+//    object Sym {
+//      private val uniques: HashSet[Sym] = new HashSet("uniques", 512)
+//      def apply(variable: Var, const: Const): Sym = {
+//        val newSym = new UniqueSym(variable, const)
+//        (uniques findEntryOrUpdate newSym)
+//      }
+//      private def nextSymId = {_symId += 1; _symId}; private var _symId = 0
+//      implicit val SymOrdering: Ordering[Sym] = Ordering.by(_.id)
+//    }
+
     trait PropTraverser {
       def apply(x: Prop): Unit = x match {
         case And(a, b) => apply(a); apply(b)
