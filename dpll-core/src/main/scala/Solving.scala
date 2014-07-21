@@ -188,27 +188,40 @@ trait Solving extends Logic {
         // if we found a solution, conjunct the formula with the model's negation and recurse
         if (model ne NoModel) {
           val unassigned: List[Sym] = (vars -- model.keySet).toList
-          def force(lit: Lit) = {
+          def force(lit: Lit, model: Model) = {
             val model0 = withLit(model, lit)
             if (model0 ne NoModel) List(model0)
             else Nil
           }
 
-          def forceAll(unassigned: List[Sym], model: Model): List[Model] = {
-            unassigned match {
-              case Nil => List(model)
-              case head :: tail =>
-                (force(Lit(head, pos = true)) match {
-                  case Nil => Nil
-                  case hd :: tl => forceAll(tail, hd)
-                }) ++ (force(Lit(head, pos = false)) match {
-                case Nil => Nil
-                case hd :: tl => forceAll(tail, hd)
-              })
+          def expandUnassigned(unassigned: List[Sym], model: Model): List[Model] = {
+            var current = mutable.ArrayBuffer[Model]()
+            var next = mutable.ArrayBuffer[Model]()
+            current.sizeHint(1 << unassigned.size)
+            next.sizeHint(1 << unassigned.size)
+
+            current += model
+
+            for {
+              s <- unassigned
+            } {
+              for {
+                model <- current
+              } {
+                next ++= force(Lit(s, pos = true), model)
+                next ++= force(Lit(s, pos = false), model)
+              }
+              val tmp = current
+              current = next
+              next = tmp
+
+              next.clear()
             }
+
+            current.toList
           }
 
-          val allModels: List[Model] = models ++ forceAll(unassigned, model)
+          val allModels: List[Model] = models ++ expandUnassigned(unassigned, model)
           val negated = formula(allModels.map(m => negateModel(m)).toSeq: _*)
           findAllModels(f ++ negated, allModels, recursionDepthAllowed - 1)
         }
