@@ -146,6 +146,30 @@ trait Solving extends Logic {
     val EmptyModel = collection.immutable.SortedMap.empty[Sym, Boolean]
     val NoModel: Model = null
 
+    def formatModels(models: List[Model]) = {
+      val groupedByKey = models.groupBy {
+        model => model.keySet
+      }.mapValues {
+        models =>
+          models.sortWith {
+            case (a, b) =>
+            val keys = a.keys
+            val decider = keys.dropWhile(key => a(key) == b(key))
+            decider.headOption.map(key => a(key) < b(key)).getOrElse(false)
+          }
+      }
+
+      val sortedByKeys: Seq[(SortedSet[Sym], List[Model])] = groupedByKey.toSeq.sortBy {
+        case (syms, models) => syms.map(_.id).toIterable
+      }
+
+      (for {
+        (keys, models) <- sortedByKeys
+        model <- models
+      } yield {
+      }).mkString("\n")
+    }
+
     // returns all solutions, if any (TODO: better infinite recursion backstop -- detect fixpoint??)
     def findAllModelsFor(f: Formula): List[Model] = {
       val vars: Set[Sym] = f.flatMap(_ collect {
@@ -153,7 +177,7 @@ trait Solving extends Logic {
       }).toSet
       // debug.patmat("vars "+ vars)
       // the negation of a model -(S1=True/False /\ ... /\ SN=True/False) = clause(S1=False/True, ...., SN=False/True)
-      def negateModel(m: Model) = clause(m.toSeq.map {
+      def negateModel(m: Model): Clause = clause(m.toSeq.map {
         case (sym, pos) => Lit(sym, !pos)
       }: _*)
 
@@ -164,9 +188,29 @@ trait Solving extends Logic {
         // if we found a solution, conjunct the formula with the model's negation and recurse
         if (model ne NoModel) {
           val unassigned: List[Sym] = (vars -- model.keySet).toList
-          //            debug.patmat("unassigned "+ unassigned +" in "+ model)
-          val negated = negateModel(model)
-          findAllModels(f :+ negated, model :: models, recursionDepthAllowed - 1)
+          def force(lit: Lit) = {
+            val model0 = withLit(model, lit)
+            if (model0 ne NoModel) List(model0)
+            else Nil
+          }
+
+          def forceAll(unassigned: List[Sym], model: Model): List[Model] = {
+            unassigned match {
+              case Nil => List(model)
+              case head :: tail =>
+                (force(Lit(head, pos = true)) match {
+                  case Nil => Nil
+                  case hd :: tl => forceAll(tail, hd)
+                }) ++ (force(Lit(head, pos = false)) match {
+                case Nil => Nil
+                case hd :: tl => forceAll(tail, hd)
+              })
+            }
+          }
+
+          val allModels: List[Model] = models ++ forceAll(unassigned, model)
+          val negated = formula(allModels.map(m => negateModel(m)).toSeq: _*)
+          findAllModels(f ++ negated, allModels, recursionDepthAllowed - 1)
         }
         else models
       }
@@ -254,7 +298,7 @@ trait Solving extends Logic {
     val EmptyModel = collection.immutable.SortedMap.empty[Sym, Boolean]
     val NoModel: Model = null
 
-    def printModels(models: List[Model]) {
+    def formatModels(models: List[Model]) = {
       val groupedByKey = models.groupBy {
         model => model.keySet
       }.mapValues {
@@ -271,12 +315,11 @@ trait Solving extends Logic {
         case (syms, models) => syms.map(_.id).toIterable
       }
 
-      for {
+      (for {
         (keys, models) <- sortedByKeys
         model <- models
-      } {
-        println(model)
-      }
+      } yield {
+      }).mkString("\n")
     }
 
     def findModelFor(f: Formula): Model = {
@@ -306,9 +349,6 @@ trait Solving extends Logic {
           throw AnalysisBudget.exceeded
       }
 
-      println("onemodel")
-      printModels(List(satisfiableWithModel))
-
       satisfiableWithModel
     }
 
@@ -329,7 +369,7 @@ trait Solving extends Logic {
       //      val start = if (Statistics.canEnable) Statistics.startTimer(patmatAnaSAT) else null
       val models = try {
         @tailrec
-        def allModels(acc: List[Model] = Nil): List[Model] = if (solver.isSatisfiable()) {
+        def allModels(acc: List[Model] = Nil): List[Model] = if (solver.isSatisfiable) {
           val valuation = extractModel(solver, symForVar)
           allModels(valuation :: acc)
         } else {
@@ -349,8 +389,6 @@ trait Solving extends Logic {
 
       println("problem")
       println(cnfString(f))
-      println("allmodels")
-      printModels(models)
 
       models
     }
@@ -360,7 +398,6 @@ trait Solving extends Logic {
       def dimacs(lit: Lit) = if(lit.pos) lit.sym.id else -lit.sym.id
       val clauses: Array[IVecInt] = f.toArray.map(clause => new VecInt(clause.map(dimacs).toArray))
       val cl = new Vec(clauses)
-      println(cl)
       cl
     }
 
