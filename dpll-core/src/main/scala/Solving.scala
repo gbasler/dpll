@@ -222,8 +222,8 @@ trait Solving extends Logic {
           }
 
           val allModels: List[Model] = models ++ expandUnassigned(unassigned, model)
-          val negated = formula(allModels.map(m => negateModel(m)).toSeq: _*)
-          findAllModels(f ++ negated, allModels, recursionDepthAllowed - 1)
+          val negated = negateModel(model)
+          findAllModels(f :+ negated, allModels, recursionDepthAllowed - 1)
         }
         else models
       }
