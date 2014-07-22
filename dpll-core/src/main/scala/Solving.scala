@@ -211,6 +211,7 @@ trait Solving extends Logic {
                 next ++= force(Lit(s, pos = true), model)
                 next ++= force(Lit(s, pos = false), model)
               }
+
               val tmp = current
               current = next
               next = tmp
