@@ -74,4 +74,100 @@ class SolvingTest extends BaseSpecification {
     }
     Outer.Aggregate.test === Outer.AggregateSat.test
   }
+
+  "t8430 fixed" in {
+    object Outer extends Solving {
+
+      object Aggregate extends Solver {
+
+        val clauses: Seq[Seq[Prop]] = {
+          val c = Sym("V1=LetC.type#13")
+          val f = Sym("V1=LetF.type#14")
+          val l = Sym("V1=LetL#11")
+          val p = Sym("V1=LetP.type#15")
+          val boolLit = Sym("V2=BooleanLit.type#16")
+          val charLit = Sym("V2=CharLit#12")
+          val intLit = Sym("V2=IntLit.type#17")
+          val unitLit = Sym("V2=UnitLit.type#18")
+
+          Seq(
+            Seq(c, f, l, p),
+            Seq(Not(c), Not(f)),
+            Seq(Not(c), Not(l)),
+            Seq(Not(c), Not(p)),
+            Seq(Not(f), Not(l)),
+            Seq(Not(f), Not(p)),
+            Seq(Not(l), Not(p)),
+            Seq(boolLit, charLit, intLit, unitLit),
+            Seq(Not(boolLit), Not(charLit)),
+            Seq(Not(boolLit), Not(intLit)),
+            Seq(Not(boolLit), Not(unitLit)),
+            Seq(Not(charLit), Not(intLit)),
+            Seq(Not(charLit), Not(unitLit)),
+            Seq(Not(intLit), Not(unitLit)),
+            Seq(Not(l), Not(charLit))
+          )
+        }
+
+        val f: Seq[Prop] = for {
+          clause: Seq[Prop] <- clauses
+        } yield {
+          clause.reduceLeft(Or)
+        }
+        val formula = f.reduceLeft(And)
+
+        def test: String = {
+          val s = findAllModelsFor(eqFreePropToSolvable(formula))
+          formatModels(s)
+        }
+      }
+
+      object AggregateSat extends SatSolver {
+
+        def test = {
+          val clauses: Seq[Seq[Prop]] = {
+            val c = Sym("V1=LetC.type#13")
+            val f = Sym("V1=LetF.type#14")
+            val l = Sym("V1=LetL#11")
+            val p = Sym("V1=LetP.type#15")
+            val boolLit = Sym("V2=BooleanLit.type#16")
+            val charLit = Sym("V2=CharLit#12")
+            val intLit = Sym("V2=IntLit.type#17")
+            val unitLit = Sym("V2=UnitLit.type#18")
+
+            Seq(
+              Seq(c, f, l, p),
+              Seq(Not(c), Not(f)),
+              Seq(Not(c), Not(l)),
+              Seq(Not(c), Not(p)),
+              Seq(Not(f), Not(l)),
+              Seq(Not(f), Not(p)),
+              Seq(Not(l), Not(p)),
+              Seq(boolLit, charLit, intLit, unitLit),
+              Seq(Not(boolLit), Not(charLit)),
+              Seq(Not(boolLit), Not(intLit)),
+              Seq(Not(boolLit), Not(unitLit)),
+              Seq(Not(charLit), Not(intLit)),
+              Seq(Not(charLit), Not(unitLit)),
+              Seq(Not(intLit), Not(unitLit)),
+              Seq(Not(l), Not(charLit))
+            )
+          }
+
+          val f: Seq[Prop] = for {
+            clause: Seq[Prop] <- clauses
+          } yield {
+            clause.reduceLeft(Or)
+          }
+          val formula = f.reduceLeft(And)
+          val s = findAllModelsFor(eqFreePropToSolvable(formula))
+          val res = formatModels(s)
+          println(res)
+          res
+        }
+      }
+
+    }
+    Outer.Aggregate.test === Outer.AggregateSat.test
+  }
 }

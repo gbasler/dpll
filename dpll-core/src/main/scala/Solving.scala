@@ -164,9 +164,14 @@ trait Solving extends Logic {
       }
 
       (for {
-        (keys, models) <- sortedByKeys
+        (keys, models: List[Model]) <- sortedByKeys
         model <- models
       } yield {
+        (for {
+          (sym, value) <- model
+        } yield {
+          s"""$sym = ${if (value) "T" else "F"}"""
+        }).mkString(", ")
       }).mkString("\n")
     }
 
@@ -330,9 +335,14 @@ trait Solving extends Logic {
       }
 
       (for {
-        (keys, models) <- sortedByKeys
+        (keys, models: List[Model]) <- sortedByKeys
         model <- models
       } yield {
+        (for {
+          (sym, value) <- model
+        } yield {
+          s"""$sym = ${if (value) "T" else "F"}"""
+        }).mkString(", ")
       }).mkString("\n")
     }
 
