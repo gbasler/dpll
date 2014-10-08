@@ -75,9 +75,17 @@ trait Logic {
       def implications: List[(Sym, List[Sym], List[Sym])]
     }
 
-    case class And(a: Prop, b: Prop) extends Prop
+    final case class And(ops: Set[Prop]) extends Prop
 
-    case class Or(a: Prop, b: Prop) extends Prop
+    object And {
+      def apply(ops: Prop*) = new And(ops.toSet)
+    }
+
+    final case class Or(ops: Set[Prop]) extends Prop
+
+    object Or {
+      def apply(ops: Prop*) = new Or(ops.toSet)
+    }
 
     case class Not(a: Prop) extends Prop
 
@@ -105,10 +113,97 @@ trait Logic {
       implicit val SymOrdering: Ordering[Sym] = Ordering.by(_.id)
     }
 
+    /**
+     * Simplifies propositional formula according to the following rules:
+     * - eliminate double negation (avoids unnecessary Tseitin variables)
+     * - flatten trees of same connectives (avoids unnecessary Tseitin variables)
+     * - removes constants and connectives that are in fact constant because of their operands
+     * - eliminates duplicate operands
+     *
+     * Complexity: DFS over formula tree
+     */
+    def simplify(f: Prop, fail: Boolean = false): Prop = {
+      // limit size to avoid blow up
+      def hasImpureAtom(ops: Seq[Prop]): Boolean = ops.size < 10 &&
+        ops.combinations(2).exists {
+          case Seq(a, Not(b)) if a == b => true
+          case Seq(Not(a), b) if a == b => true
+          case _                        => false
+        }
+
+      f match {
+        case And(fv)     =>
+          // recurse for nested And (pulls all Ands up)
+          val ops = fv.map(simplify(_, fail)) - True // ignore `True`
+
+          // build up Set in order to remove duplicates
+          val opsFlattened = ops.flatMap {
+            case And(fv) if fail => fv // culprit???
+            case f       => Set(f)
+          }.toSeq
+
+          if (hasImpureAtom(opsFlattened) || opsFlattened.contains(False)) {
+            False
+          } else {
+            opsFlattened match {
+              case Seq()  => True
+              case Seq(f) => f
+              case ops    => And(ops: _*)
+            }
+          }
+        case Or(fv)      =>
+          // recurse for nested Or (pulls all Ors up)
+          val ops = fv.map(simplify(_, fail)) - False // ignore `False`
+
+          val opsFlattened = ops.flatMap {
+            case Or(fv) => fv
+            case f      => Set(f)
+          }.toSeq
+          val ref = Or(opsFlattened: _*)
+
+          if (hasImpureAtom(opsFlattened) || opsFlattened.contains(True)) {
+            True
+          } else {
+            opsFlattened match {
+              case Seq()  => False
+              case Seq(f) => f
+              case ops    => Or(ops: _*)
+            }
+          }
+        case Not(Not(a)) =>
+          simplify(a, fail)
+//        case pp@Not(p)      =>
+//          Not(p)
+//          val a = pushNegationInside(simplify(p))
+//          if(a != pp) {
+//            println(s"orig: $pp")
+//            println(s"simplified: $a")
+//          }
+//          a
+        case p           =>
+          p
+      }
+    }
+
+    private def pushNegationInside(f: Prop): Prop = f match {
+      case And(fv)       =>
+        Or(fv.map(pushNegationInside))
+      case Or(fv)        =>
+        And(fv.map(pushNegationInside))
+      case True          =>
+        False
+      case False         =>
+        True
+      case Not(p) =>
+        p
+      case p             =>
+        Not(p)
+    }
+
     trait PropTraverser {
       def apply(x: Prop): Unit = x match {
-        case And(a, b) => apply(a); apply(b)
-        case Or(a, b) => apply(a); apply(b)
+        case And(ops) => ops foreach apply
+        case Or(ops) => ops foreach apply
         case Not(a) => apply(a)
         case Eq(a, b) => applyVar(a); applyConst(b)
         case _ =>
@@ -127,42 +222,29 @@ trait Logic {
 
     trait PropMap {
       def apply(x: Prop): Prop = x match { // TODO: mapConserve
-        case And(a, b) => And(apply(a), apply(b))
-        case Or(a, b) => Or(apply(a), apply(b))
+        case And(ops) => And(ops map apply)
+        case Or(ops) => Or(ops map apply)
         case Not(a) => Not(apply(a))
         case p => p
       }
     }
 
-    // an interface that should be suitable for feeding a SAT solver when the time comes
-    type Formula
-    type FormulaBuilder
+    case class Solvable(cnf: CNFBuilder, symForVar: Map[Int, Sym])
 
-    // creates an empty formula builder to which more formulae can be added
-    def formulaBuilder: FormulaBuilder
+    def eqFreePropToSolvable(f: Prop, fail: Boolean = false): Solvable
 
-    // val f = formulaBuilder; addFormula(f, f1); ... addFormula(f, fN)
-    // toFormula(f) == andFormula(f1, andFormula(..., fN))
-    def addFormula(buff: FormulaBuilder, f: Formula): Unit
-
-    def toFormula(buff: FormulaBuilder): Formula
-
-    // the conjunction of formulae `a` and `b`
-    def andFormula(a: Formula, b: Formula): Formula
-
-    // equivalent formula to `a`, but simplified in a lightweight way (drop duplicate clauses)
-    def simplifyFormula(a: Formula): Formula
-
-    // may throw an AnalysisBudget.Exception
-    def eqFreePropToSolvable(p: Prop): Formula
-
-    type Model = collection.immutable.SortedMap[Sym, Boolean]
+    type Model = Map[Sym, Boolean]
     val EmptyModel: Model
     val NoModel: Model
 
-    def findModelFor(f: Formula): Model
+        // this model contains the auxiliary variables as well
+    type TseitinModel = collection.immutable.SortedSet[Lit]
+    val EmptyTseitinModel = collection.immutable.SortedSet.empty[Lit]
+    val NoTseitinModel: TseitinModel = null
 
-    def findAllModelsFor(f: Formula): List[Model]
+    def findModelFor(solvable: Solvable): Model
+
+    def findAllModelsFor(solvable: Solvable): List[Model]
   }
 
 }

@@ -1,6 +1,7 @@
 class SolvingTest extends BaseSpecification {
 
   "small formula" in {
+    skipped("later")
     object Outer extends Solving {
 
       object Aggregate extends Solver {
@@ -28,6 +29,7 @@ class SolvingTest extends BaseSpecification {
   }
 
   "bigger formula" in {
+    skipped("later")
     object Outer extends Solving {
 
       object Aggregate extends Solver {
@@ -52,6 +54,7 @@ class SolvingTest extends BaseSpecification {
   }
 
   "huge formula" in {
+    skipped("later")
     object Outer extends Solving {
 
       object Aggregate extends Solver {
