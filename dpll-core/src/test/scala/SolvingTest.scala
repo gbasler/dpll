@@ -103,7 +103,10 @@ class SolvingTest extends BaseSpecification {
           } {
             val expanding = findAllModelsFor(eqFreePropToSolvable(f))
             val tseitin = findAllModelsFor(eqFreePropToSolvableTseitin(f))
-            println(f)
+            if(formatModels(tseitin) != formatModels(expanding)) {
+              println(f)
+              val tseitin = findAllModelsFor(eqFreePropToSolvableTseitin(f))
+            }
             formatModels(tseitin) === formatModels(expanding)
           })
         }

@@ -208,7 +208,7 @@ trait Solving extends Logic {
             not(convertWithCache(a))
           case _: Sym  =>
             val l = cnf.newLiteral()
-            //            println(s"created $l for $p")
+                        println(s"created $l for $p")
             l
           case True    =>
             cnf.constTrue
@@ -224,6 +224,7 @@ trait Solving extends Logic {
         cache.getOrElse(p, {
           val l = convertWithoutCache(p)
           require(!cache.isDefinedAt(p), "loop in formula?")
+          println(s"added $p -> $l")
           cache += (p -> l)
           l
         })
@@ -328,6 +329,7 @@ trait Solving extends Logic {
           // already in CNF, just add clauses
           clauses.foreach(clause => cnf.addClauseRaw(clause))
         case p              =>
+          cache.clear() // side-effects!!! literal could already be there!
           println("convert to CNF")
           // add intermediate variable since we want the formula to be SAT!
           cnf.addClauseProcessed(convertWithCache(p))
