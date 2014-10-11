@@ -94,8 +94,17 @@ trait Logic {
     case object False extends Prop
 
     // symbols are propositions
-    class Sym(variable: String) extends Prop {
+    class Sym(val variable: String) extends Prop {
       val id: Int = Sym.nextSymId
+
+      override def hashCode(): Int = {
+        variable.##
+      }
+
+      override def equals(other: scala.Any): Boolean = other match {
+        case that: Sym => variable == that.variable
+        case _ => false
+      }
 
       override def toString = variable + "#" + id
     }

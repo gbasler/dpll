@@ -9,6 +9,7 @@ class Lit(val v: Int) extends AnyVal {
   def unary_- : Lit = Lit(-v)
   def variable: Int = Math.abs(v)
   def positive = v >= 0
+  def dimacs: Int = v
 
   override def toString: String = s"Lit#$v"
 }
