@@ -247,6 +247,7 @@ trait Solving extends Logic {
       * but runs with linear complexity.
       */
     class Tseitin() extends CnfBuilder {
+      val plaisted = true
       def apply(p: Prop): Solvable = {
 
         def convert(p: Prop): Lit = {
@@ -280,7 +281,7 @@ trait Solving extends Logic {
             // op1*op2*...*opx <==> (op1 + o')(op2 + o')... (opx + o')(op1' + op2' +... + opx' + o)
             val new_bv = bv - constTrue // ignore `True`
             val o = newLiteral() // auxiliary Tseitin variable
-                        new_bv.map(op => addClauseProcessed(clause(op, -o)))
+            if (!plaisted) new_bv.map(op => addClauseProcessed(clause(op, -o)))
             addClauseProcessed(new_bv.map(op => -op) + o)
             o
           }
@@ -297,7 +298,7 @@ trait Solving extends Logic {
             // op1+op2+...+opx <==> (op1' + o)(op2' + o)... (opx' + o)(op1 + op2 +... + opx + o')
             val new_bv = bv - constFalse // ignore `False`
             val o = newLiteral() // auxiliary Tseitin variable
-                        new_bv.map(op => addClauseProcessed(clause(-op, o)))
+            if (!plaisted) new_bv.map(op => addClauseProcessed(clause(-op, o)))
             addClauseProcessed(new_bv + (-o))
             o
           }
@@ -457,21 +458,29 @@ trait Solving extends Logic {
           symOpt
       }
 
-      val allVars = {
-        val vars = mutable.Set[Int]()
-        for {
-          clause <- solvable.cnf
-          lit <- clause
-        } {
-          vars += lit.variable
-        }
-        vars
-      }
+//      val allVars = {
+//        val vars = mutable.Set[Int]()
+//        for {
+//          clause <- solvable.cnf
+//          lit <- clause
+//        } {
+//          vars += lit.variable
+//        }
+//        vars
+//      }
+
+      val relevantVars: Set[Int] = solvable.symForVar.keySet.map(math.abs)
+      val allVars = relevantVars
 
       // debug.patmat("vars "+ vars)
       // the negation of a model -(S1=True/False /\ ... /\ SN=True/False) = clause(S1=False/True, ...., SN=False/True)
       // (i.e. the blocking clause - used for ALL-SAT)
-      def negateModel(m: TseitinModel) = m.map(lit => -lit)
+      def negateModel(m: TseitinModel) = {
+        // filter out auxiliary Tseitin variables
+        val relevantLits = m.filter(l => relevantVars.contains(l.variable))
+        relevantLits.map(lit => -lit)
+        m.map(lit => -lit)
+      }
 
       /**
        * The DPLL procedure only returns a minimal mapping from literal to value
@@ -635,6 +644,14 @@ trait Solving extends Logic {
     private def projectToModel(model: TseitinModel, symForVar: Map[Int, Sym]): Model =
       if (model == NoTseitinModel) NoModel
       else {
+        object SymForVar {
+          def unapply(lit: Lit): Option[Sym] = {
+            symForVar.get(lit.variable)
+          }
+        }
+//        val b: List[(Sym, Boolean)] = model.toList collect {
+//          case SymForVar(sym) => (sym, lit.positive)
+//        }
         val a: List[(Sym, Boolean)] = model.toList collect {
           case lit if symForVar isDefinedAt lit.variable => (symForVar(lit.variable), lit.positive)
         }
