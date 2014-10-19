@@ -128,10 +128,14 @@ trait Logic {
      * - flatten trees of same connectives (avoids unnecessary Tseitin variables)
      * - removes constants and connectives that are in fact constant because of their operands
      * - eliminates duplicate operands
+     * - convert into NNF
      *
      * Complexity: DFS over formula tree
+     *
+     * See http://www.decision-procedures.org/slides/propositional_logic-2x3.pdf
      */
-    def simplify(f: Prop, fail: Boolean = false): Prop = {
+    def simplify(f: Prop): Prop = {
+
       // limit size to avoid blow up
       def hasImpureAtom(ops: Seq[Prop]): Boolean = ops.size < 10 &&
         ops.combinations(2).exists {
@@ -140,14 +144,33 @@ trait Logic {
           case _                        => false
         }
 
-      f match {
+      // push negation inside formula
+      def negationNormalFormNot(p: Prop): Prop = p match {
+        case And(ops) => Or(ops.map(negationNormalFormNot)) // De'Morgan
+        case Or(ops)  => And(ops.map(negationNormalFormNot)) // De'Morgan
+        case Not(p)   => negationNormalForm(p)
+        case True     => False
+        case False    => True
+        case s: Sym   => Not(s)
+      }
+
+      def negationNormalForm(p: Prop): Prop = p match {
+        case And(ops)     => And(ops.map(negationNormalForm))
+        case Or(ops)      => Or(ops.map(negationNormalForm))
+        case Not(negated) => negationNormalFormNot(negated)
+        case True
+             | False
+             | (_: Sym)   => p
+      }
+
+      def simplifyProp(p: Prop): Prop = p match {
         case And(fv)     =>
           // recurse for nested And (pulls all Ands up)
-          val ops = fv.map(simplify(_, fail)) - True // ignore `True`
+          val ops = fv.map(simplifyProp) - True // ignore `True`
 
           // build up Set in order to remove duplicates
           val opsFlattened = ops.flatMap {
-            case And(fv) if fail => fv // culprit???
+            case And(fv) => fv
             case f       => Set(f)
           }.toSeq
 
@@ -162,13 +185,12 @@ trait Logic {
           }
         case Or(fv)      =>
           // recurse for nested Or (pulls all Ors up)
-          val ops = fv.map(simplify(_, fail)) - False // ignore `False`
+          val ops = fv.map(simplifyProp) - False // ignore `False`
 
           val opsFlattened = ops.flatMap {
             case Or(fv) => fv
             case f      => Set(f)
           }.toSeq
-          val ref = Or(opsFlattened: _*)
 
           if (hasImpureAtom(opsFlattened) || opsFlattened.contains(True)) {
             True
@@ -180,18 +202,15 @@ trait Logic {
             }
           }
         case Not(Not(a)) =>
-          simplify(a, fail)
-//        case pp@Not(p)      =>
-//          Not(p)
-//          val a = pushNegationInside(simplify(p))
-//          if(a != pp) {
-//            println(s"orig: $pp")
-//            println(s"simplified: $a")
-//          }
-//          a
+          simplify(a)
+        case Not(p)      =>
+          Not(simplify(p))
         case p           =>
           p
       }
+
+      val nnf = negationNormalForm(f)
+      simplifyProp(nnf)
     }
 
     private def pushNegationInside(f: Prop): Prop = f match {
@@ -238,7 +257,7 @@ trait Logic {
       }
     }
 
-    case class Solvable(cnf: CNFBuilder, symForVar: Map[Int, Sym])
+    type Solvable
 
     def eqFreePropToSolvable(f: Prop, fail: Boolean = false): Solvable
 

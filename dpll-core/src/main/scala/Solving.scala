@@ -28,16 +28,18 @@ trait Solving extends Logic {
     type Formula = FormulaBuilder
     def formula(c: Clause*): Formula = ArrayBuffer(c: _*)
 
-    type Clause  = collection.Set[Lit]
+    type Clause  = Set[Lit]
+
     // a clause is a disjunction of distinct literals
-    def clause(l: Lit*): Clause = (
-      if (l.lengthCompare(1) <= 0) {
-        l.toSet // SI-8531 Avoid LinkedHashSet's bulk for 0 and 1 element clauses
-      } else {
-        // neg/t7020.scala changes output 1% of the time, the non-determinism is quelled with this linked set
-        mutable.LinkedHashSet(l: _*)
-      }
-    )
+    def clause(l: Lit*): Clause = l.toSet
+
+    /** Conjunctive normal form (of a Boolean formula).
+     *  A formula in this form is amenable to a SAT solver
+     *  (i.e., solver that decides satisfiability of a formula).
+     */
+    type Cnf = Array[Clause]
+
+    case class Solvable(cnf: Cnf, symForVar: Map[Int, Sym])
 
 //    type Lit
 //    def Lit(sym: Sym, pos: Boolean = true): Lit
@@ -119,23 +121,21 @@ trait Solving extends Logic {
       type Formula = mutable.ArrayBuffer[Clause]
 
       def formula(c: Clause*): Formula = ArrayBuffer(c.toSeq: _*)
-      def clause(l: Lit*): Clause = l.toSet
 
       val TrueF = formula()
       val FalseF = formula(clause())
-      val cnf = new CNFBuilder
-      val cache = mutable.Map[Sym, Lit]()
+
+      val symbols = mutable.Map[Int, Sym]()
+
+      def symForVar = symbols.toMap
+
       def lit(s: Sym) = {
-        if (!cache.contains(s)) {
-          cache += s -> cnf.newLiteral()
-        }
-        formula(clause(cache(s)))
+        symbols += (s.id -> s)
+        formula(clause(Lit(s.id)))
       }
       def negLit(s: Sym) = {
-        if (!cache.contains(s)) {
-          cache += s -> cnf.newLiteral()
-        }
-        formula(clause(-cache(s)))
+        symbols += (s.id -> s)
+        formula(clause(-Lit(s.id)))
       }
 
       def merge(a: Clause, b: Clause) = a ++ b
@@ -179,125 +179,180 @@ trait Solving extends Logic {
             distribute(cnfA, cnfB)
         }
       }
-      val res   = conjunctiveNormalForm(negationNormalForm(p))
-      res.map(cnf.addClauseRaw)
 
-      // all variables are guaranteed to be in cache
-      // (doesn't mean they will appear in the resulting formula)
-      val symForVar: Map[Int, Sym] = cache.collect {
-        case (sym: Sym, lit) => lit.variable -> sym
-      }(collection.breakOut) // breakOut in order to obtain immutable Map
-
-      Solvable(cnf, symForVar)
+      val res = conjunctiveNormalForm(negationNormalForm(p))
+      Solvable(res.toArray, symForVar)
     }
 
-    def eqFreePropToSolvableTseitin(p: Prop): Solvable = {
-      type Cache = Map[Prop, Lit]
+    trait CnfBuilder {
+      type Cache = Map[Sym, Lit]
 
-      val cache = mutable.Map[Prop, Lit]()
+      val cache = mutable.Map[Sym, Lit]()
 
-      val cnf = new CNFBuilder
+      private[this] val buff = ArrayBuffer[Clause]()
 
-      def convertWithoutCache(p: Prop): Lit = {
-        p match {
-          case And(fv) =>
-            and(fv.map(convertWithCache))
-          case Or(fv)  =>
-            or(fv.map(convertWithCache))
-          case Not(a)  =>
-            not(convertWithCache(a))
-          case _: Sym  =>
-            val l = cnf.newLiteral()
-                        println(s"created $l for $p")
-            l
-          case True    =>
-            cnf.constTrue
-          case False   =>
-            cnf.constFalse
-          case _: Eq   =>
-//            debug.patmat("Forgot to call propToSolvable()?")
-            throw new MatchError(p)
-        }
+      private[this] var literalCount = 0
+
+      lazy val constTrue: Lit = {
+        val constTrue = newLiteral()
+        addClauseProcessed(clause(constTrue))
+        constTrue
       }
 
-      def convertWithCache(p: Prop): Lit = {
-        cache.getOrElse(p, {
-          val l = convertWithoutCache(p)
-          require(!cache.isDefinedAt(p), "loop in formula?")
-          println(s"added $p -> $l")
-          cache += (p -> l)
+      def constFalse: Lit = -constTrue
+
+      def isConst(l: Lit): Boolean = l == constTrue || l == constFalse
+
+      /**
+       * @return new Tseitin variable
+       */
+      def newLiteral(): Lit = {
+        literalCount += 1
+        Lit(literalCount)
+      }
+
+      def convertSym(sym: Sym): Lit = {
+        cache.getOrElse(sym, {
+          val l = newLiteral()
+          cache += (sym -> l)
           l
         })
       }
 
-      def and(bv: Set[Lit]): Lit = {
-        import cnf._
-        if (bv.isEmpty) {
-          constTrue
-        } else if (bv.size == 1) {
-          bv.head
-        } else if (bv.contains(constFalse)) {
-          constFalse
-        } else {
-          // op1*op2*...*opx <==> (op1 + o')(op2 + o')... (opx + o')(op1' + op2' +... + opx' + o)
-          val new_bv = bv - constTrue // ignore `True`
-          val o = newLiteral() // auxiliary Tseitin variable
-          new_bv.map(op => addClauseProcessed(op, -o))
-          addClauseProcessed((new_bv.map(op => -op) + o).toSeq: _*)
-          o
+      def addClauseProcessed(clause: Clause) {
+        if (clause.nonEmpty) {
+          buff += clause
         }
       }
 
-      def or(bv: Set[Lit]): Lit = {
-        import cnf._
-        if (bv.isEmpty) {
-          constFalse
-        } else if (bv.size == 1) {
-          bv.head
-        } else if (bv.contains(constTrue)) {
-          constTrue
-        } else {
-          // op1+op2+...+opx <==> (op1' + o)(op2' + o)... (opx' + o)(op1 + op2 +... + opx + o')
-          val new_bv = bv - constFalse // ignore `False`
-          val o = newLiteral() // auxiliary Tseitin variable
-          new_bv.map(op => addClauseProcessed(-op, o))
-          addClauseProcessed((new_bv + (-o)).toSeq: _*)
-          o
+      def buildCnf: Array[Clause] = buff.toArray
+
+      // all variables are guaranteed to be in cache
+      // (doesn't mean they will appear in the resulting formula)
+      def symForVar: Map[Int, Sym] = cache.collect {
+        case (sym: Sym, lit) => lit.variable -> sym
+      }(collection.breakOut) // breakOut in order to obtain immutable Map
+
+    }
+
+    /** Tseitin transformation: used for conversion of a
+      * propositional formula into conjunctive normal form (CNF)
+      * (input format for SAT solver).
+      * A simple conversion into CNF via Shannon expansion would
+      * also be possible but it's worst-case complexity is exponential
+      * (in the number of variables) and thus even simple problems
+      * could become untractable.
+      * The Tseitin transformation results in an _equisatisfiable_
+      * CNF-formula (it generates auxiliary variables)
+      * but runs with linear complexity.
+      */
+    class Tseitin() extends CnfBuilder {
+      def apply(p: Prop): Solvable = {
+
+        def convert(p: Prop): Lit = {
+          p match {
+            case And(fv)  =>
+              and(fv.map(convert))
+            case Or(fv)   =>
+              or(fv.map(convert))
+            case Not(a)   =>
+              not(convert(a))
+            case sym: Sym =>
+              convertSym(sym)
+            case True     =>
+              constTrue
+            case False    =>
+              constFalse
+            case _: Eq    =>
+              throw new MatchError(p)
+          }
         }
+
+        def and(bv: Set[Lit]): Lit = {
+          if (bv.isEmpty) {
+            // this case can actually happen because `removeVarEq` could add no constraints
+            constTrue
+          } else if (bv.size == 1) {
+            bv.head
+          } else if (bv.contains(constFalse)) {
+            constFalse
+          } else {
+            // op1*op2*...*opx <==> (op1 + o')(op2 + o')... (opx + o')(op1' + op2' +... + opx' + o)
+            val new_bv = bv - constTrue // ignore `True`
+            val o = newLiteral() // auxiliary Tseitin variable
+                        new_bv.map(op => addClauseProcessed(clause(op, -o)))
+            addClauseProcessed(new_bv.map(op => -op) + o)
+            o
+          }
+        }
+
+        def or(bv: Set[Lit]): Lit = {
+          if (bv.isEmpty) {
+            constFalse
+          } else if (bv.size == 1) {
+            bv.head
+          } else if (bv.contains(constTrue)) {
+            constTrue
+          } else {
+            // op1+op2+...+opx <==> (op1' + o)(op2' + o)... (opx' + o)(op1 + op2 +... + opx + o')
+            val new_bv = bv - constFalse // ignore `False`
+            val o = newLiteral() // auxiliary Tseitin variable
+                        new_bv.map(op => addClauseProcessed(clause(-op, o)))
+            addClauseProcessed(new_bv + (-o))
+            o
+          }
+        }
+
+        // no need for auxiliary variable
+        def not(a: Lit): Lit = -a
+
+        // add intermediate variable since we want the formula to be SAT!
+        addClauseProcessed(clause(convert(p)))
+
+        def cnfString(f: Array[Clause]): String = {
+          // TODO: fixme
+          val lits: Array[List[String]] = f map (_.map(_.toString).toList)
+          val xss: List[List[String]] = lits toList
+          val a: String = alignAcrossRows(xss, "\\/", " /\\\n")
+          a
+        }
+
+        println("#clauses: " + buildCnf.size)
+        println(cnfString(buildCnf))
+        Solvable(buildCnf, symForVar)
       }
+    }
 
-      // no need for auxiliary variable
-      def not(a: Lit): Lit = -a
+    class AlreadyInCNF {
 
-      def toLiteral(f: Prop): Option[Lit] = f match {
-        case Not(a)   =>
-          toLiteral(a).map(lit => -lit)
-        case sym: Sym =>
-          //          Some(convertWithCache(f)) // go via cache in order to get single literal for variable
+      val symbols = mutable.Map[Int, Sym]()
 
-          val l: Lit = Lit(sym.id)
-          cache += (sym -> l)
-          Some(l) // keep variable number to get compatible ordering
-        case True     =>
-          Some(cnf.constTrue)
-        case False    =>
-          Some(cnf.constFalse)
-        case _        =>
-          None
+      private def symForVar = symbols.toMap
+
+      object ToLiteral {
+        def unapply(f: Prop): Option[Lit] = f match {
+          case Not(ToLiteral(lit)) => Some(-lit)
+          case sym: Sym            =>
+            symbols += (sym.id -> sym)
+            Some(Lit(sym.id))
+          case _                   => None
+        }
       }
 
       object ToDisjunction {
-        def unapply(f: Prop): Option[Clause] = f match {
-          case Or(fv) =>
-            val a: Option[Clause] = fv.foldLeft(Option(Set[Lit]())) {
-              case (Some(clause), p) =>
-                toLiteral(p).map(clause + _)
-              case (_, _)            =>
+        def unapply(f: Prop): Option[Array[Clause]] = f match {
+          case Or(fv)         =>
+            val cl = fv.foldLeft(Option(clause())) {
+              case (Some(clause), ToLiteral(lit)) =>
+                Some(clause + lit)
+              case (_, _)                         =>
                 None
             }
-            a
-          case p      =>
-            toLiteral(p).map(Set(_))
+            cl.map(Array(_))
+          case True           => Some(Array()) // empty, no clauses needed
+          case False          => Some(Array(clause())) // empty clause can't be satisfied
+          case ToLiteral(lit) => Some(Array(clause(lit)))
+          case _              => None
         }
       }
 
@@ -305,45 +360,49 @@ trait Solving extends Logic {
        * Checks if propositional formula is already in CNF
        */
       object ToCnf {
-        def unapply(f: Prop): Option[mutable.ArrayBuffer[Clause]] = f match {
-          case And(fv) =>
-            fv.foldLeft(Option(mutable.ArrayBuffer[Clause]())) {
-              case (Some(cnf), ToDisjunction(clause)) =>
-                Some(cnf += clause)
-              case (_, _)                             =>
+        def unapply(f: Prop): Option[Solvable] = f match {
+          case ToDisjunction(clauses) => Some(Solvable(clauses, symForVar) )
+          case And(fv)                =>
+            val clauses = fv.foldLeft(Option(mutable.ArrayBuffer[Clause]())) {
+              case (Some(cnf), ToDisjunction(clauses)) =>
+                Some(cnf ++= clauses)
+              case (_, _)                              =>
                 None
             }
-          //          case True    =>
-          //            Some(cnf.constTrue)
-          //          case False   =>
-          //            Some(cnf.constFalse)
-          case p =>
-            ToDisjunction.unapply(p).map(mutable.ArrayBuffer[Clause](_))
+            clauses.map(c => Solvable(c.toArray, symForVar))
+          case _                      => None
         }
       }
-
-      val simplified: Prop = simplify(p)
-      simplified match {
-        case ToCnf(clauses) =>
-          println("already in CNF")
-          // already in CNF, just add clauses
-          clauses.foreach(clause => cnf.addClauseRaw(clause))
-        case p              =>
-          cache.clear() // side-effects!!! literal could already be there!
-          println("convert to CNF")
-          // add intermediate variable since we want the formula to be SAT!
-          cnf.addClauseProcessed(convertWithCache(p))
-      }
-
-      // all variables are guaranteed to be in cache
-      // (doesn't mean they will appear in the resulting formula)
-      val symForVar: Map[Int, Sym] = cache.collect {
-        case (sym: Sym, lit) => lit.variable -> sym
-      }(collection.breakOut) // breakOut in order to obtain immutable Map
-
-      Solvable(cnf, symForVar)
     }
 
+    def eqFreePropToSolvableTseitin(p: Prop): Solvable = {
+      //      // we must take all vars from non simplified formula
+      //      // otherwise if we get `T` as formula, we don't expand the variables
+      //      // that are not in the formula...
+      //      val allVars = {
+      //        val vars: Set[Var] = gatherVariables(p)
+      //
+      //        val vars = mutable.Set[Int]()
+      //        for {
+      //          clause <- solvable.cnf
+      //          lit <- clause
+      //        } {
+      //          vars += lit.variable
+      //        }
+      //        vars
+      //      }
+
+      val simplified = simplify(p)
+      val cnfExtractor = new AlreadyInCNF
+      simplified match {
+        case cnfExtractor.ToCnf(clauses) =>
+          // this is needed because t6942 would generate too many clauses with Tseitin
+          // already in CNF, just add clauses
+          clauses
+        case p                           =>
+          new Tseitin().apply(p)
+      }
+    }
   }
 
   // simple solver using DPLL
@@ -398,7 +457,16 @@ trait Solving extends Logic {
           symOpt
       }
 
-      val allVars: Set[Int] = solvable.cnf.allVariables
+      val allVars = {
+        val vars = mutable.Set[Int]()
+        for {
+          clause <- solvable.cnf
+          lit <- clause
+        } {
+          vars += lit.variable
+        }
+        vars
+      }
 
       // debug.patmat("vars "+ vars)
       // the negation of a model -(S1=True/False /\ ... /\ SN=True/False) = clause(S1=False/True, ...., SN=False/True)
@@ -471,7 +539,7 @@ trait Solving extends Logic {
           else models
         }
 
-      val tseitinModels: List[TseitinModel] = findAllModels(solvable.cnf.clauses, Nil)
+      val tseitinModels: List[TseitinModel] = findAllModels(solvable.cnf, Nil)
       val models: List[Model] = tseitinModels.map(projectToModel(_, solvable.symForVar))
 
       val grouped: Seq[(Set[Sym], List[Model])] = models.groupBy {
@@ -514,7 +582,7 @@ trait Solving extends Logic {
 
     def findModelFor(solvable: Solvable): Model = {
 //      println("findModelFor")
-      projectToModel(findTseitinModelFor(solvable.cnf.clauses), solvable.symForVar)
+      projectToModel(findTseitinModelFor(solvable.cnf), solvable.symForVar)
     }
 
     def findTseitinModelFor(clauses: Array[Clause]): TseitinModel = {
