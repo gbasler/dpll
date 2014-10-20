@@ -97,6 +97,10 @@ class SolvingTest extends BaseSpecification {
           , Sym("V3=scala.collection.immutable.::[?]")
         ).sortBy(_.toString.length)
 
+        val formulas0 = Seq(
+          Or(Sym("a"), Sym("b"))
+          )
+
         def test = {
           Result.unit(for {
             f <- formulas
@@ -104,6 +108,7 @@ class SolvingTest extends BaseSpecification {
             val expanding = findAllModelsFor(eqFreePropToSolvable(f))
             val tseitin = findAllModelsFor(eqFreePropToSolvableTseitin(f))
             if(formatModels(tseitin) != formatModels(expanding)) {
+              println("testing:")
               println(f)
               val tseitin = findAllModelsFor(eqFreePropToSolvableTseitin(f))
             }

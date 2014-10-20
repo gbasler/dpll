@@ -4,25 +4,41 @@
  */
 
 /** A literal.
- */
+  */
 class Lit(val v: Int) extends AnyVal {
   def unary_- : Lit = Lit(-v)
+
   def variable: Int = Math.abs(v)
+
   def positive = v >= 0
+
   def dimacs: Int = v
 
   override def toString: String = s"Lit#$v"
 }
 
+object PosLit {
+  def unapply(l: Lit): Boolean = l.positive
+}
+
+object NegLit {
+  def unapply(l: Lit): Boolean = !l.positive
+}
+
 object Lit {
   def apply(v: Int): Lit = new Lit(v)
-  implicit val LitOrdering: Ordering[Lit] = Ordering.by(_.v)
+
+  //  implicit val LitOrdering: Ordering[Lit] = Ordering.by(_.variable * 2)
+  implicit val LitOrdering: Ordering[Lit] = Ordering.fromLessThan {
+    case (a, b) if a.variable == b.variable => a.dimacs < b.dimacs
+    case (a, b) => a.variable < b.variable
+  }
 }
 
 /** Conjunctive normal form (of a Boolean formula).
- *  A formula in this form is amenable to a SAT solver
- *  (i.e., solver that decides satisfiability of a formula).
- */
+  * A formula in this form is amenable to a SAT solver
+  * (i.e., solver that decides satisfiability of a formula).
+  */
 class CNFBuilder {
 
   import scala.collection.mutable.ArrayBuffer
@@ -31,9 +47,11 @@ class CNFBuilder {
   type Clause = collection.Set[Lit]
   type ClauseBuilder = ArrayBuffer[Clause]
   private[this] val buff = ArrayBuffer[Clause]()
+
   def clauses: Array[Clause] = buff.toArray
 
   private[this] var myLiteralCount = 0
+
   def allLiterals: Set[Lit] = {
     (for {
       clause <- clauses
@@ -60,7 +78,7 @@ class CNFBuilder {
   }
 
   lazy val constTrue: Lit = {
-//    println("instantiated constant")
+    //    println("instantiated constant")
     val constTrue = newLiteral()
     addClauseProcessed(constTrue)
     constTrue
@@ -72,14 +90,14 @@ class CNFBuilder {
 
   // TODO: either raw or processed! since variable counting fucked up!
   def addClauseRaw(clause: Clause): Unit = {
-//    println("added raw clause")
+    //    println("added raw clause")
     buff += clause
   }
 
   /** Add literals vector, ignores clauses that are trivially satisfied
-   *
-   *  @param bv
-   */
+    *
+    * @param bv
+    */
   def addClauseProcessed(bv: Lit*) {
     val clause = processClause(bv: _*)
     if (clause.nonEmpty)
@@ -87,7 +105,7 @@ class CNFBuilder {
   }
 
   /** @return empty clause, if clause trivially satisfied
-   */
+    */
   private def processClause(bv: Lit*): Clause = {
     val clause = bv.distinct
 
@@ -115,7 +133,7 @@ class CNFBuilder {
       for {
         clause <- buff
       } yield {
-        clause.toSeq.sortBy(_.variable) mkString ("", " ", " 0")
+        clause.toSeq.sortBy(_.variable) mkString("", " ", " 0")
       }
     }.mkString("\n")
   }
