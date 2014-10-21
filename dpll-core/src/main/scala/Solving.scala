@@ -489,7 +489,7 @@ trait Solving extends Logic {
         // filter out auxiliary Tseitin variables
         val relevantLits = m.filter(l => relevantVars.contains(l.variable))
         relevantLits.map(lit => -lit)
-//        m.map(lit => -lit)
+        m.map(lit => -lit)
       }
 
       /**
@@ -543,7 +543,7 @@ trait Solving extends Logic {
         if (recursionDepthAllowed == 0) {
           models
         } else {
-          val model = findTseitinModelFor(clauses)
+          val model = findTseitinModelFor(clauses, relevantVars)
           // if we found a solution, conjunct the formula with the model's negation and recurse
           if (model ne NoTseitinModel) {
             val unassigned: List[Int] = (allVars -- model.map(lit => lit.variable)).toList
@@ -603,23 +603,32 @@ trait Solving extends Logic {
     def findModelFor(solvable: Solvable): Model = {
       //      println("findModelFor")
       val relevantVars: Set[Int] = solvable.symForVar.keySet.map(math.abs)
-      projectToModel(findTseitinModelFor(solvable.cnf), solvable.symForVar)
+      projectToModel(findTseitinModelFor(solvable.cnf, relevantVars), solvable.symForVar)
     }
 
-    def findTseitinModelFor(clauses: Array[Clause]): TseitinModel = {
+    def findTseitinModelFor(clauses: Array[Clause],
+                            relevantVars: Set[Int]): TseitinModel = {
       @inline def orElse(a: TseitinModel, b: => TseitinModel) = if (a ne NoTseitinModel) a else b
 
 //      if (reachedTime(stoppingNanos)) throw AnalysisBudget.timeout
 
 //      debug.patmat(s"DPLL\n${cnfString(clauses)}")
 
+
+      val unitClauses: Array[Clause] = clauses.filter(_.size == 1).sortWith {
+        case (a, b) if relevantVars.contains(a.head.variable) == relevantVars.contains(b.head.variable) =>
+          a.head.dimacs < b.head.dimacs
+        case (a, b) =>
+          relevantVars.contains(a.head.variable)
+      }
+
       val satisfiableWithModel: TseitinModel =
         if (clauses isEmpty) EmptyTseitinModel
         else if (clauses exists (_.isEmpty)) NoTseitinModel
-        else clauses.find(_.size == 1) match {
+        else unitClauses.headOption match {
           case Some(unitClause) =>
             val unitLit = unitClause.head
-            withLit(findTseitinModelFor(dropUnit(clauses, unitLit)), unitLit)
+            withLit(findTseitinModelFor(dropUnit(clauses, unitLit), relevantVars), unitLit)
           case _ =>
             // partition symbols according to whether they appear in positive and/or negative literals
             val pos = new mutable.HashSet[Int]()
@@ -633,20 +642,31 @@ trait Solving extends Logic {
             val impures = pos intersect neg
             // appearing only in either positive/negative positions
             val pures = (pos ++ neg) -- impures
+            val (relevantPures, nonRelevantPures) = pures.partition(relevantVars.contains)
 
-            if (pures nonEmpty) {
-              val pureVar = pures.head
+            if (relevantPures nonEmpty) {
+              val pureVar = relevantPures.head
               // turn it back into a literal
               // (since equality on literals is in terms of equality
               //  of the underlying symbol and its positivity, simply construct a new Lit)
               val pureLit = Lit(if (neg(pureVar)) -pureVar else pureVar)
               // debug.patmat("pure: "+ pureLit +" pures: "+ pures +" impures: "+ impures)
               val simplified = clauses.filterNot(_.contains(pureLit))
-              withLit(findTseitinModelFor(simplified), pureLit)
+              withLit(findTseitinModelFor(simplified, relevantVars), pureLit)
             } else {
-              val split = clauses.head.head
+              val relevantSplit = clauses.flatMap {
+                cl => cl.filter(lit => relevantVars.contains(lit.variable))
+              }.headOption
+
+              if(relevantSplit.isEmpty) {
+                println("asdasd")
+              }
+
+              val split = if(relevantSplit.nonEmpty) relevantSplit.head else clauses.head.head
+
               // debug.patmat("split: "+ split)
-              orElse(findTseitinModelFor(clauses :+ clause(split)), findTseitinModelFor(clauses :+ clause(-split)))
+              orElse(findTseitinModelFor(clauses :+ clause(split), relevantVars),
+                findTseitinModelFor(clauses :+ clause(-split), relevantVars))
             }
         }
 
