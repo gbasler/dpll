@@ -642,15 +642,10 @@ trait Solving extends Logic {
             val impures = pos intersect neg
             // appearing only in either positive/negative positions
             val pures = (pos ++ neg) -- impures
+            val (relevantPures, nonRelevantPures) = pures.partition(relevantVars.contains)
 
-            if (pures nonEmpty) {
-              val (relevantPures, nonRelevantPures) = pures.partition(relevantVars.contains)
-              val allPures = relevantPures ++ nonRelevantPures
-              if(relevantPures.isEmpty) {
-                println("sdf")
-                return EmptyTseitinModel
-              }
-              val pureVar = allPures.head
+            if (relevantPures nonEmpty) {
+              val pureVar = relevantPures.head
               // turn it back into a literal
               // (since equality on literals is in terms of equality
               //  of the underlying symbol and its positivity, simply construct a new Lit)
