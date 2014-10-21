@@ -546,8 +546,8 @@ trait Solving extends Logic {
           val model = findTseitinModelFor(clauses, relevantVars)
           // if we found a solution, conjunct the formula with the model's negation and recurse
           if (model ne NoTseitinModel) {
-            val unassigned0: List[Int] = (allVars -- model.map(lit => lit.variable)).toList
-            val unassigned = unassigned0.sorted(CompatibleOrdering)
+            val unassigned: List[Int] = (allVars -- model.map(lit => lit.variable)).toList
+
 //          debug.patmat("unassigned "+ unassigned +" in "+ model)
             // TODO: will crash for direct CNF
 
@@ -614,10 +614,18 @@ trait Solving extends Logic {
 
 //      debug.patmat(s"DPLL\n${cnfString(clauses)}")
 
+
+      val unitClauses: Array[Clause] = clauses.filter(_.size == 1).sortWith {
+        case (a, b) if relevantVars.contains(a.head.variable) == relevantVars.contains(b.head.variable) =>
+          a.head.dimacs < b.head.dimacs
+        case (a, b) =>
+          relevantVars.contains(a.head.variable)
+      }
+
       val satisfiableWithModel: TseitinModel =
         if (clauses isEmpty) EmptyTseitinModel
         else if (clauses exists (_.isEmpty)) NoTseitinModel
-        else clauses.find(_.size == 1) match {
+        else unitClauses.headOption match {
           case Some(unitClause) =>
             val unitLit = unitClause.head
             withLit(findTseitinModelFor(dropUnit(clauses, unitLit), relevantVars), unitLit)
@@ -637,22 +645,30 @@ trait Solving extends Logic {
 
             if (pures nonEmpty) {
               val (relevantPures, nonRelevantPures) = pures.partition(relevantVars.contains)
-              if (relevantPures.isEmpty) {
-                val allPures = relevantPures ++ nonRelevantPures
-                require(relevantPures.nonEmpty)
-                val pureVar = allPures.head
-                // turn it back into a literal
-                // (since equality on literals is in terms of equality
-                //  of the underlying symbol and its positivity, simply construct a new Lit)
-                val pureLit = Lit(if (neg(pureVar)) -pureVar else pureVar)
-                // debug.patmat("pure: "+ pureLit +" pures: "+ pures +" impures: "+ impures)
-                val simplified = clauses.filterNot(_.contains(pureLit))
-                withLit(findTseitinModelFor(simplified, relevantVars), pureLit)
-              } else {
-                NoTseitinModel
+              val allPures = relevantPures ++ nonRelevantPures
+              if(relevantPures.isEmpty) {
+                println("sdf")
+                return EmptyTseitinModel
               }
+              val pureVar = allPures.head
+              // turn it back into a literal
+              // (since equality on literals is in terms of equality
+              //  of the underlying symbol and its positivity, simply construct a new Lit)
+              val pureLit = Lit(if (neg(pureVar)) -pureVar else pureVar)
+              // debug.patmat("pure: "+ pureLit +" pures: "+ pures +" impures: "+ impures)
+              val simplified = clauses.filterNot(_.contains(pureLit))
+              withLit(findTseitinModelFor(simplified, relevantVars), pureLit)
             } else {
-              val split = clauses.head.head
+              val relevantSplit = clauses.flatMap {
+                cl => cl.filter(lit => relevantVars.contains(lit.variable))
+              }.headOption
+
+              if(relevantSplit.isEmpty) {
+                println("asdasd")
+              }
+
+              val split = if(relevantSplit.nonEmpty) relevantSplit.head else clauses.head.head
+
               // debug.patmat("split: "+ split)
               orElse(findTseitinModelFor(clauses :+ clause(split), relevantVars),
                 findTseitinModelFor(clauses :+ clause(-split), relevantVars))
