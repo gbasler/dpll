@@ -281,8 +281,8 @@ trait Solving extends Logic {
             // op1*op2*...*opx <==> (op1 + o')(op2 + o')... (opx + o')(op1' + op2' +... + opx' + o)
             val new_bv = bv - constTrue // ignore `True`
             val o = newLiteral() // auxiliary Tseitin variable
-            if (!plaisted) new_bv.map(op => addClauseProcessed(clause(op, -o)))
-            addClauseProcessed(new_bv.map(op => -op) + o)
+             new_bv.map(op => addClauseProcessed(clause(op, -o)))
+            if (!plaisted) addClauseProcessed(new_bv.map(op => -op) + o)
             o
           }
         }
@@ -318,7 +318,9 @@ trait Solving extends Logic {
           a
         }
 
+        println("formula: " + p)
         println("#clauses: " + buildCnf.size)
+        println("mapping: " + symForVar)
         println(cnfString(buildCnf))
         Solvable(buildCnf, symForVar)
       }
@@ -393,6 +395,7 @@ trait Solving extends Logic {
       //        vars
       //      }
 
+      println(s"original formula: " + p)
       val simplified = simplify(p)
       val cnfExtractor = new AlreadyInCNF
       simplified match {
@@ -489,7 +492,6 @@ trait Solving extends Logic {
         // filter out auxiliary Tseitin variables
         val relevantLits = m.filter(l => relevantVars.contains(l.variable))
         relevantLits.map(lit => -lit)
-        m.map(lit => -lit)
       }
 
       /**
@@ -546,6 +548,9 @@ trait Solving extends Logic {
           val model = findTseitinModelFor(clauses, relevantVars)
           // if we found a solution, conjunct the formula with the model's negation and recurse
           if (model ne NoTseitinModel) {
+
+            checkModel(model, solvable)
+
             val unassigned: List[Int] = (allVars -- model.map(lit => lit.variable)).toList
 
 //          debug.patmat("unassigned "+ unassigned +" in "+ model)
@@ -671,6 +676,25 @@ trait Solving extends Logic {
         }
 
       satisfiableWithModel
+    }
+
+    private def checkModel(model: TseitinModel, solvable: Solvable) {
+
+      val real = projectToModel(model, solvable.symForVar)
+      val humanreadable = formatModels(real :: Nil)
+
+      def checkClause(clause: Clause) {
+        val satisfied = clause.exists(lit => model.contains(lit))
+        if(!satisfied) {
+          println(s"clause not satisfied: " + clause)
+        }
+      }
+
+      for {
+        clause <- solvable.cnf
+      } {
+        checkClause(clause)
+      }
     }
 
     private def projectToModel(model: TseitinModel, symForVar: Map[Int, Sym]): Model =
