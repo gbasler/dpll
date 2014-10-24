@@ -248,6 +248,9 @@ trait Solving extends Logic {
       */
     class Tseitin() extends CnfBuilder {
       val plaisted = true
+
+      var savings = 0
+
       def apply(p: Prop): Solvable = {
 
         def convert(p: Prop): Lit = {
@@ -282,7 +285,11 @@ trait Solving extends Logic {
             val new_bv = bv - constTrue // ignore `True`
             val o = newLiteral() // auxiliary Tseitin variable
              new_bv.map(op => addClauseProcessed(clause(op, -o)))
-            if (!plaisted) addClauseProcessed(new_bv.map(op => -op) + o)
+            if (!plaisted) {
+              addClauseProcessed(new_bv.map(op => -op) + o)
+            } else {
+              savings += 1
+            }
             o
           }
         }
@@ -298,7 +305,11 @@ trait Solving extends Logic {
             // op1+op2+...+opx <==> (op1' + o)(op2' + o)... (opx' + o)(op1 + op2 +... + opx + o')
             val new_bv = bv - constFalse // ignore `False`
             val o = newLiteral() // auxiliary Tseitin variable
-            if (!plaisted) new_bv.map(op => addClauseProcessed(clause(-op, o)))
+            if (!plaisted) {
+              new_bv.map(op => addClauseProcessed(clause(-op, o)))
+            } else {
+              savings += new_bv.size
+            }
             addClauseProcessed(new_bv + (-o))
             o
           }
@@ -318,10 +329,13 @@ trait Solving extends Logic {
           a
         }
 
-        println("formula: " + p)
-        println("#clauses: " + buildCnf.size)
-        println("mapping: " + symForVar)
-        println(cnfString(buildCnf))
+        val percent = 100.0 * buildCnf.size.toDouble / (buildCnf.size + savings)
+        println(f"#clauses: ${buildCnf.size}, plaisted saved $savings clauses ($percent%2.2f%%)")
+
+//        println("formula: " + p)
+//        println("#clauses: " + buildCnf.size)
+//        println("mapping: " + symForVar)
+//        println(cnfString(buildCnf))
         Solvable(buildCnf, symForVar)
       }
     }
@@ -395,17 +409,17 @@ trait Solving extends Logic {
       //        vars
       //      }
 
-      println(s"original formula: " + p)
+//      println(s"original formula: " + p)
       val simplified = simplify(p)
       val cnfExtractor = new AlreadyInCNF
       simplified match {
-        case cnfExtractor.ToCnf(clauses) =>
-          println("already CNF...")
+//        case cnfExtractor.ToCnf(clauses) =>
+//          println("already CNF...")
           // this is needed because t6942 would generate too many clauses with Tseitin
           // already in CNF, just add clauses
-          clauses
+//          clauses
         case p                           =>
-          println("tseitin...")
+//          println("tseitin...")
           new Tseitin().apply(p)
       }
     }
@@ -564,7 +578,7 @@ trait Solving extends Logic {
         }
 
       val tseitinModels: List[TseitinModel] = findAllModels(solvable.cnf, Nil)
-      println(formatModels0(tseitinModels))
+//      println(formatModels0(tseitinModels))
       val models: List[Model] = tseitinModels.map(projectToModel(_, solvable.symForVar))
 
       val grouped: Seq[(Set[Sym], List[Model])] = models.groupBy {
@@ -664,7 +678,7 @@ trait Solving extends Logic {
               }.headOption
 
               if(relevantSplit.isEmpty) {
-                println("asdasd")
+                println("empty split")
               }
 
               val split = if(relevantSplit.nonEmpty) relevantSplit.head else clauses.head.head
