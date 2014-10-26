@@ -110,19 +110,12 @@ class TseitinTest extends BaseSpecification {
         equiModels(f)
       }
 
-      //      "scalac formula" should {
-//        def Sym(name: String, index: Int) = Sym(name)
-//
-//        val formula = Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Sym("V1=Z0", 1), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z1", 3)), Not(Sym("V1=null", 2)))), Sym("V1=Z2", 4)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z3", 5)), Not(Sym("V1=null", 2)))), Sym("V1=Z4", 6)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z5", 7)), Not(Sym("V1=null", 2)))), Sym("V1=Z6", 8)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z7", 9)), Not(Sym("V1=null", 2)))), Sym("V1=Z8", 10)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z9", 11)), Not(Sym("V1=null", 2)))), Sym("V1=Z10", 12)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z11", 13)), Not(Sym("V1=null", 2)))), Sym("V1=Z12", 14)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z13", 15)), Not(Sym("V1=null", 2)))), Sym("V1=Z14", 16)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z15", 17)), Not(Sym("V1=null", 2)))), Sym("V1=Z16", 18)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z17", 19)), Not(Sym("V1=null", 2)))), Sym("V1=Z18", 20)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z19", 21)), Not(Sym("V1=null", 2))))
-//
-//        "plain tseitin" in {
-//          Cnf.tseitin(formula, plaisted = false).cnf.length must be_==(118 + 1)
-//        }
-//
-//        "plain plaisted" in {
-//          Cnf.tseitin(formula, plaisted = false).cnf.length must be_==(60 + 1)
-//        }
-//      }
+      def scalacFormula = {
+        def Sym(name: String, index: Int) = new Sym(name)
+
+        val formula = Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Sym("V1=Z0", 1), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z1", 3)), Not(Sym("V1=null", 2)))), Sym("V1=Z2", 4)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z3", 5)), Not(Sym("V1=null", 2)))), Sym("V1=Z4", 6)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z5", 7)), Not(Sym("V1=null", 2)))), Sym("V1=Z6", 8)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z7", 9)), Not(Sym("V1=null", 2)))), Sym("V1=Z8", 10)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z9", 11)), Not(Sym("V1=null", 2)))), Sym("V1=Z10", 12)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z11", 13)), Not(Sym("V1=null", 2)))), Sym("V1=Z12", 14)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z13", 15)), Not(Sym("V1=null", 2)))), Sym("V1=Z14", 16)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z15", 17)), Not(Sym("V1=null", 2)))), Sym("V1=Z16", 18)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z17", 19)), Not(Sym("V1=null", 2)))), Sym("V1=Z18", 20)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z19", 21)), Not(Sym("V1=null", 2))))
+        equiModels(formula)
+      }
     }
 
   }
@@ -151,5 +144,10 @@ class TseitinTest extends BaseSpecification {
     "(a & ~b) | (c & ~d & e)" in {
       Outer.Aggregate.complicated
     }
+
+    "scalac formula" in {
+      Outer.Aggregate.scalacFormula
+    }
   }
+
 }
