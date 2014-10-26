@@ -263,9 +263,7 @@ trait Solving extends Logic {
       // new literals start after formula symbols
       var literalCount: Int = symbolMapping.size
 
-      def convertSym(sym: Sym): Lit = {
-        Lit(symbolMapping(sym))
-      }
+      def convertSym(sym: Sym): Lit = symbolMapping.lit(sym)
 
       def apply(p: Prop): Solvable = {
 
