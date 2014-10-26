@@ -223,7 +223,22 @@ trait Solving extends Logic {
 
       def addClauseProcessed(clause: Clause) {
         if (clause.nonEmpty) {
-          buff += clause
+          // subsumption of clauses:
+          // e.g., if we already have (a \/ b) and we want to add (a \/ b \/ c)
+          // then the bigger clause can be omitted
+          val subsumed = buff.exists(cl => cl.subsetOf(clause))
+          if(!subsumed) {
+            if(buff.filter(cl => clause.subsetOf(cl)).nonEmpty) {
+              println("subsumed!")
+            }
+
+            // backward subsumption:
+            // remove all clauses that contain the new clause
+            buff.filterNot(cl => clause.subsetOf(cl))
+            buff += clause
+          } else {
+            println("subsumed!")
+          }
         }
       }
 
