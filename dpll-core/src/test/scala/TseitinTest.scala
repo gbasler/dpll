@@ -57,7 +57,7 @@ class TseitinTest extends BaseSpecification {
           ma <- a
         } yield {
           ma must beLike {
-            case (m: Model) => b must contain(m)
+            case (m: Model) if b.contains(m) => ok
           }
         }
       }
@@ -87,54 +87,42 @@ class TseitinTest extends BaseSpecification {
         models must be_==(Seq(Map(Sym("p") -> false)))
       }
 
-//      "simple examples" should {
-//        "p" in {
-//          val f = Sym("p")
-//          val models = allTseitinModels(f)
-//          models must be_==(Seq(Map(Sym("p") -> true)))
-//        }
-//
-//        "!p" in {
-//          val f = Not(Sym("p"))
-//          val models = allTseitinModels(f)
-//          models must be_==(Seq(Map(Sym("p") -> false)))
-//        }
-//
-//        "p + q" in {
-//          val f = Or(Sym("p"), Sym("q"))
-//          val models = allTseitinModels(f)
-//          //      println(stringsForModels(models).mkString("\n"))
-//          checkModels(models, Seq(
-//            Map(Sym("p") -> false, Sym("q") -> true),
-//            Map(Sym("p") -> true, Sym("q") -> false),
-//            Map(Sym("p") -> true, Sym("q") -> true)
-//          ))
-//
-//          "equi models for Tseitin & Plaisted" in {
-//            equiModels(f)
-//          }
-//        }
-//
-//        "p +!p" in {
-//          val f = Or(Sym("p"), Not(Sym("p")))
-//          val models = allTseitinModels(f)
-//          //      println(stringsForModels(models).mkString("\n"))
-//          checkModels(models, Seq(
-//            Map(Sym("p") -> false),
-//            Map(Sym("p") -> true)
-//          ))
-//        }
-//
-//        "!(p + q)" in {
-//          val f = Not(Or(Sym("p"), Sym("q")))
-//          val models = allTseitinModels(f)
-//          //      println(stringsForModels(models).mkString("\n"))
-//          checkModels(models, Seq(
-//            Map(Sym("p") -> false, Sym("q") -> false)
-//          ))
-//        }
-//
-//        "(a & ~b) | (c & ~d & e)" in {
+      def pOrQ = {
+        val f = Or(Sym("p"), Sym("q"))
+        val models = allTseitinModels(f)
+        //      println(stringsForModels(models).mkString("\n"))
+        checkModels(models, Seq(
+          Map(Sym("p") -> false, Sym("q") -> true),
+          Map(Sym("p") -> true, Sym("q") -> false),
+          Map(Sym("p") -> true, Sym("q") -> true)
+        ))
+
+        //          "equi models for Tseitin & Plaisted" in {
+        //            equiModels(f)
+        //          }
+      }
+
+      def notPorQ = {
+        val f = Not(Or(Sym("p"), Sym("q")))
+        val models = allTseitinModels(f)
+        //      println(stringsForModels(models).mkString("\n"))
+        checkModels(models, Seq(
+          Map(Sym("p") -> false, Sym("q") -> false)
+        ))
+      }
+
+      def pOrNotp = {
+        val f = Or(Sym("p"), Not(Sym("p")))
+        val models = allTseitinModels(f)
+        //      println(stringsForModels(models).mkString("\n"))
+        checkModels(models, Seq(
+          Map(Sym("p") -> false),
+          Map(Sym("p") -> true)
+        ))
+      }
+
+      //
+      //        "(a & ~b) | (c & ~d & e)" in {
 //          val f = Or(And(Sym("a"), Not(Sym("b"))), And(Sym("c"), Not(Sym("d")), Sym("e")))
 //          "tseitin" in {
 //            Cnf.tseitin(f, plaisted = false).cnf.length must be_==(11 + 1)
@@ -176,32 +164,19 @@ class TseitinTest extends BaseSpecification {
       Outer.Aggregate.testNotP
     }
 
-//    "p + q" in {
-//      val f = Or(Sym("p"), Sym("q"))
-//      val models = allTseitinModels(f)
-//      //      println(stringsForModels(models).mkString("\n"))
-//      checkModels(models, Seq(
-//        Map(Sym("p") -> false, Sym("q") -> true),
-//        Map(Sym("p") -> true, Sym("q") -> false),
-//        Map(Sym("p") -> true, Sym("q") -> true)
-//      ))
-//
-//      "equi models for Tseitin & Plaisted" in {
-//        equiModels(f)
-//      }
-//    }
-//
-//    "p +!p" in {
-//      val f = Or(Sym("p"), Not(Sym("p")))
-//      val models = allTseitinModels(f)
-//      //      println(stringsForModels(models).mkString("\n"))
-//      checkModels(models, Seq(
-//        Map(Sym("p") -> false),
-//        Map(Sym("p") -> true)
-//      ))
-//    }
-//
-//    "!(p + q)" in {
+    "p + q" in {
+      Outer.Aggregate.pOrQ
+    }
+
+    "!(p + q)" in {
+      Outer.Aggregate.notPorQ
+    }
+
+    "p +!p" in {
+      Outer.Aggregate.pOrNotp
+    }
+
+    //    "!(p + q)" in {
 //      val f = Not(Or(Sym("p"), Sym("q")))
 //      val models = allTseitinModels(f)
 //      //      println(stringsForModels(models).mkString("\n"))

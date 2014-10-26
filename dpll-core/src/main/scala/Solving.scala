@@ -410,6 +410,11 @@ trait Solving extends Logic {
       //      }
 
 //      println(s"original formula: " + p)
+
+      // collect all variables since after simplification / CNF conversion
+      // they could have been removed from the formula
+      val variables: Set[Var] = gatherVariables(p)
+
       val simplified = simplify(p)
       val cnfExtractor = new AlreadyInCNF
       simplified match {
@@ -644,7 +649,7 @@ trait Solving extends Logic {
       val satisfiableWithModel: TseitinModel =
         if (clauses isEmpty) EmptyTseitinModel
         else if (clauses exists (_.isEmpty)) NoTseitinModel
-        else unitClauses.headOption match {
+        else clauses.find(_.size == 1) match {
           case Some(unitClause) =>
             val unitLit = unitClause.head
             withLit(findTseitinModelFor(dropUnit(clauses, unitLit), relevantVars), unitLit)
@@ -663,8 +668,8 @@ trait Solving extends Logic {
             val pures = (pos ++ neg) -- impures
             val (relevantPures, nonRelevantPures) = pures.partition(relevantVars.contains)
 
-            if (relevantPures nonEmpty) {
-              val pureVar = relevantPures.head
+            if (pures nonEmpty) {
+              val pureVar = pures.head
               // turn it back into a literal
               // (since equality on literals is in terms of equality
               //  of the underlying symbol and its positivity, simply construct a new Lit)
@@ -681,7 +686,7 @@ trait Solving extends Logic {
                 println("empty split")
               }
 
-              val split = if(relevantSplit.nonEmpty) relevantSplit.head else clauses.head.head
+              val split = clauses.head.head
 
               // debug.patmat("split: "+ split)
               orElse(findTseitinModelFor(clauses :+ clause(split), relevantVars),

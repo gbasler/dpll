@@ -213,21 +213,6 @@ trait Logic {
       simplifyProp(nnf)
     }
 
-    private def pushNegationInside(f: Prop): Prop = f match {
-      case And(fv)       =>
-        Or(fv.map(pushNegationInside))
-      case Or(fv)        =>
-        And(fv.map(pushNegationInside))
-      case True          =>
-        False
-      case False         =>
-        True
-      case Not(p) =>
-        p
-      case p             =>
-        Not(p)
-    }
-
     trait PropTraverser {
       def apply(x: Prop): Unit = x match {
         case And(ops) => ops foreach apply
