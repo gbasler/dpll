@@ -11,7 +11,7 @@ import org.sat4j.tools.ModelIterator
 
 import scala.annotation.tailrec
 import scala.collection
-import scala.collection.immutable.SortedSet
+import scala.collection.immutable.{IndexedSeq, SortedSet}
 import scala.collection.mutable
 
 // naive CNF translation and simple DPLL solver
@@ -39,7 +39,25 @@ trait Solving extends Logic {
      */
     type Cnf = Array[Clause]
 
-    case class Solvable(cnf: Cnf, symForVar: Map[Int, Sym])
+    class SymbolMapping(symbols: Set[Sym]) {
+      val variableForSymbol: Map[Sym, Int] = {
+        symbols.zipWithIndex.map {
+          case (sym, i) => sym -> (i + 1)
+        }.toMap
+      }
+
+      val symForVar: Map[Int, Sym] = variableForSymbol.map(_.swap)
+
+      val relevantVars: Set[Int] = symForVar.keySet.map(math.abs)
+
+      def apply(sym: Sym): Int = variableForSymbol(sym)
+
+      def lit(sym: Sym): Lit = Lit(variableForSymbol(sym))
+
+      def size = symbols.size
+    }
+
+    case class Solvable(cnf: Cnf, symbolMapping: SymbolMapping)
 
 //    type Lit
 //    def Lit(sym: Sym, pos: Boolean = true): Lit
@@ -125,17 +143,13 @@ trait Solving extends Logic {
       val TrueF = formula()
       val FalseF = formula(clause())
 
-      val symbols = mutable.Map[Int, Sym]()
-
-      def symForVar = symbols.toMap
+      val symbolMapping = new SymbolMapping(gatherSymbols(p))
 
       def lit(s: Sym) = {
-        symbols += (s.id -> s)
-        formula(clause(Lit(s.id)))
+        formula(clause(symbolMapping.lit(s)))
       }
       def negLit(s: Sym) = {
-        symbols += (s.id -> s)
-        formula(clause(-Lit(s.id)))
+        formula(clause(-symbolMapping.lit(s)))
       }
 
       def merge(a: Clause, b: Clause) = a ++ b
@@ -181,17 +195,21 @@ trait Solving extends Logic {
       }
 
       val res = conjunctiveNormalForm(negationNormalForm(p))
-      Solvable(res.toArray, symForVar)
+      Solvable(res.toArray, symbolMapping)
     }
 
     trait CnfBuilder {
-      type Cache = Map[Sym, Lit]
-
-      val cache = mutable.Map[Sym, Lit]()
-
       private[this] val buff = ArrayBuffer[Clause]()
 
-      private[this] var literalCount = 0
+      var literalCount: Int
+
+      /**
+       * @return new Tseitin variable
+       */
+      def newLiteral(): Lit = {
+        literalCount += 1
+        Lit(literalCount)
+      }
 
       lazy val constTrue: Lit = {
         val constTrue = newLiteral()
@@ -203,22 +221,6 @@ trait Solving extends Logic {
 
       def isConst(l: Lit): Boolean = l == constTrue || l == constFalse
 
-      /**
-       * @return new Tseitin variable
-       */
-      def newLiteral(): Lit = {
-        literalCount += 1
-        Lit(literalCount)
-      }
-
-      def convertSym(sym: Sym): Lit = {
-        cache.getOrElse(sym, {
-          val l = newLiteral()
-          cache += (sym -> l)
-          l
-        })
-      }
-
       def addClauseProcessed(clause: Clause) {
         if (clause.nonEmpty) {
           buff += clause
@@ -226,12 +228,6 @@ trait Solving extends Logic {
       }
 
       def buildCnf: Array[Clause] = buff.toArray
-
-      // all variables are guaranteed to be in cache
-      // (doesn't mean they will appear in the resulting formula)
-      def symForVar: Map[Int, Sym] = cache.collect {
-        case (sym: Sym, lit) => lit.variable -> sym
-      }(collection.breakOut) // breakOut in order to obtain immutable Map
 
     }
 
@@ -246,10 +242,15 @@ trait Solving extends Logic {
       * CNF-formula (it generates auxiliary variables)
       * but runs with linear complexity.
       */
-    class Tseitin() extends CnfBuilder {
-      val plaisted = true
-
+    class Tseitin(symbolMapping: SymbolMapping, plaisted: Boolean) extends CnfBuilder {
       var savings = 0
+
+      // new literals start after formula symbols
+      var literalCount: Int = symbolMapping.size
+
+      def convertSym(sym: Sym): Lit = {
+        Lit(symbolMapping(sym))
+      }
 
       def apply(p: Prop): Solvable = {
 
@@ -336,22 +337,17 @@ trait Solving extends Logic {
 //        println("#clauses: " + buildCnf.size)
 //        println("mapping: " + symForVar)
 //        println(cnfString(buildCnf))
-        Solvable(buildCnf, symForVar)
+        Solvable(buildCnf, symbolMapping)
       }
     }
 
-    class AlreadyInCNF {
-
-      val symbols = mutable.Map[Int, Sym]()
-
-      private def symForVar = symbols.toMap
+    class AlreadyInCNF(symbolMapping: SymbolMapping) {
 
       object ToLiteral {
         def unapply(f: Prop): Option[Lit] = f match {
           case Not(ToLiteral(lit)) => Some(-lit)
           case sym: Sym            =>
-            symbols += (sym.id -> sym)
-            Some(Lit(sym.id))
+            Some(symbolMapping.lit(sym))
           case _                   => None
         }
       }
@@ -378,7 +374,7 @@ trait Solving extends Logic {
        */
       object ToCnf {
         def unapply(f: Prop): Option[Solvable] = f match {
-          case ToDisjunction(clauses) => Some(Solvable(clauses, symForVar) )
+          case ToDisjunction(clauses) => Some(Solvable(clauses, symbolMapping) )
           case And(fv)                =>
             val clauses = fv.foldLeft(Option(mutable.ArrayBuffer[Clause]())) {
               case (Some(cnf), ToDisjunction(clauses)) =>
@@ -386,13 +382,13 @@ trait Solving extends Logic {
               case (_, _)                              =>
                 None
             }
-            clauses.map(c => Solvable(c.toArray, symForVar))
+            clauses.map(c => Solvable(c.toArray, symbolMapping))
           case _                      => None
         }
       }
     }
 
-    def eqFreePropToSolvableTseitin(p: Prop): Solvable = {
+    def eqFreePropToSolvableTseitin(p: Prop, plaisted: Boolean = false): Solvable = {
       //      // we must take all vars from non simplified formula
       //      // otherwise if we get `T` as formula, we don't expand the variables
       //      // that are not in the formula...
@@ -413,19 +409,19 @@ trait Solving extends Logic {
 
       // collect all variables since after simplification / CNF conversion
       // they could have been removed from the formula
-      val variables: Set[Var] = gatherVariables(p)
+      val symbolMapping = new SymbolMapping(gatherSymbols(p))
 
       val simplified = simplify(p)
-      val cnfExtractor = new AlreadyInCNF
+      val cnfExtractor = new AlreadyInCNF(symbolMapping)
       simplified match {
-//        case cnfExtractor.ToCnf(clauses) =>
-//          println("already CNF...")
+        case cnfExtractor.ToCnf(clauses) =>
+          //          println("already CNF...")
           // this is needed because t6942 would generate too many clauses with Tseitin
           // already in CNF, just add clauses
-//          clauses
+          clauses
         case p                           =>
 //          println("tseitin...")
-          new Tseitin().apply(p)
+          new Tseitin(symbolMapping, plaisted).apply(p)
       }
     }
   }
@@ -439,6 +435,10 @@ trait Solving extends Logic {
     val NoModel: Model = null
 
     def formatModels(models: List[Model]) = {
+      if (models.contains(NoModel)) {
+        println("stop")
+      }
+
       val groupedByKey = models.groupBy {
         model => model.keySet
       }.mapValues {
@@ -480,13 +480,13 @@ trait Solving extends Logic {
 //      println(s"""findAllModelsFor ${solvable.cnf.clauses.mkString(", ")}""")
 //      debug.patmat("find all models for\n"+ cnfString(f))
 
-      val syms: Set[Sym] = solvable.symForVar.values.toSet
-      val vars: Set[Int] = solvable.symForVar.keySet
+      val syms: Set[Sym] = solvable.symbolMapping.symForVar.values.toSet
+      val vars: Set[Int] = solvable.symbolMapping.symForVar.keySet
       val ord: Map[Sym, Int] = syms.toSeq.reverse.zipWithIndex.toMap
 
       val CompatibleOrdering = Ordering.by[Int, Int] {
         variable =>
-          val symOpt: Int = solvable.symForVar.get(variable).map(ord).getOrElse(-variable) // negative to be ordered after
+          val symOpt: Int = solvable.symbolMapping.symForVar.get(variable).map(ord).getOrElse(-variable) // negative to be ordered after
           symOpt
       }
 
@@ -501,7 +501,7 @@ trait Solving extends Logic {
 //        vars
 //      }
 
-      val relevantVars: Set[Int] = solvable.symForVar.keySet.map(math.abs)
+      val relevantVars: Set[Int] = solvable.symbolMapping.relevantVars
       val allVars = relevantVars
 
       // debug.patmat("vars "+ vars)
@@ -568,7 +568,7 @@ trait Solving extends Logic {
           // if we found a solution, conjunct the formula with the model's negation and recurse
           if (model ne NoTseitinModel) {
 
-            checkModel(model, solvable)
+            //            checkModel(model, solvable)
 
             val unassigned: List[Int] = (allVars -- model.map(lit => lit.variable)).toList
 
@@ -584,15 +584,15 @@ trait Solving extends Logic {
 
       val tseitinModels: List[TseitinModel] = findAllModels(solvable.cnf, Nil)
 //      println(formatModels0(tseitinModels))
-      val models: List[Model] = tseitinModels.map(projectToModel(_, solvable.symForVar))
+val models: List[Model] = tseitinModels.map(projectToModel(_, solvable.symbolMapping.symForVar))
 
-      val grouped: Seq[(Set[Sym], List[Model])] = models.groupBy {
-        model => model.keySet
-      }.toSeq
-
-      val sorted: Seq[(Set[Sym], List[Model])] = grouped.sortBy {
-        case (syms, models) => syms.map(_.id).toIterable
-      }
+      //      val grouped: Seq[(Set[Sym], List[Model])] = models.groupBy {
+      //        model => model.keySet
+      //      }.toSeq
+      //
+      //      val sorted: Seq[(Set[Sym], List[Model])] = grouped.sortBy {
+      //        case (syms, models) => syms.map(_.id).toIterable
+      //      }
 
 //      for {
 //        (keys, models) <- sorted
@@ -626,8 +626,8 @@ trait Solving extends Logic {
 
     def findModelFor(solvable: Solvable): Model = {
       //      println("findModelFor")
-      val relevantVars: Set[Int] = solvable.symForVar.keySet.map(math.abs)
-      projectToModel(findTseitinModelFor(solvable.cnf, relevantVars), solvable.symForVar)
+      val relevantVars: Set[Int] = solvable.symbolMapping.symForVar.keySet.map(math.abs)
+      projectToModel(findTseitinModelFor(solvable.cnf, relevantVars), solvable.symbolMapping.symForVar)
     }
 
     def findTseitinModelFor(clauses: Array[Clause],
@@ -699,7 +699,7 @@ trait Solving extends Logic {
 
     private def checkModel(model: TseitinModel, solvable: Solvable) {
 
-      val real = projectToModel(model, solvable.symForVar)
+      val real = projectToModel(model, solvable.symbolMapping.symForVar)
       val humanreadable = formatModels(real :: Nil)
 
       def checkClause(clause: Clause) {

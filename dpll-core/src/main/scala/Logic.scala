@@ -219,10 +219,12 @@ trait Logic {
         case Or(ops) => ops foreach apply
         case Not(a) => apply(a)
         case Eq(a, b) => applyVar(a); applyConst(b)
+        case s: Sym => applySymbol(s)
         case _ =>
       }
       def applyVar(x: Var): Unit = {}
       def applyConst(x: Const): Unit = {}
+      def applySymbol(x: Sym): Unit = {}
     }
 
     def gatherVariables(p: Prop): Set[Var] = {
@@ -231,6 +233,14 @@ trait Logic {
         override def applyVar(v: Var) = vars += v
       })(p)
       vars.toSet
+    }
+
+    def gatherSymbols(p: Prop): Set[Sym] = {
+      val syms = new mutable.HashSet[Sym]()
+      (new PropTraverser {
+        override def applySymbol(s: Sym) = syms += s
+      })(p)
+      syms.toSet
     }
 
     trait PropMap {

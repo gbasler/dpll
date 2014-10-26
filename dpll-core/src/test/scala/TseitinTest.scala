@@ -18,38 +18,22 @@ class TseitinTest extends BaseSpecification {
 
     object Aggregate extends Solver {
 
-//      type Model = Map[Sym, Boolean]
-
-//      val expanding = findAllModelsFor(eqFreePropToSolvable(f))
-//      val tseitin = findAllModelsFor(eqFreePropToSolvableTseitin(f))
-//      if(formatModels(tseitin) != formatModels(expanding)) {
-//        println("testing:")
-//        println(f)
-//        val tseitin = findAllModelsFor(eqFreePropToSolvableTseitin(f))
-//      }
-//      formatModels(tseitin) === formatModels(expanding)
-
       def allTseitinModels(f: Prop): List[Model] = {
         findAllModelsFor(eqFreePropToSolvableTseitin(f))
       }
 
-//      def allPlaistedModels(f: Formula): IndexedSeq[Map[Sym, Boolean]] = {
-//        new Solver().allModels(Cnf.tseitin(f, plaisted = false)).force.toIndexedSeq
-//      }
+      def allPlaistedModels(f: Prop): List[Model] = {
+        findAllModelsFor(eqFreePropToSolvableTseitin(f, true))
+      }
 
-//      def equiModels(f: Formula) = {
-//        val tseitin: Solvable = Cnf.tseitin(f, plaisted = false)
-//        val tseitinModels = new Solver().allModels(tseitin).force.toIndexedSeq
-//
-//        val plaisted: Solvable = Cnf.tseitin(f, plaisted = true)
-//        val plaistedModels = new Solver().allModels(plaisted, plaisted = true).force.toIndexedSeq
-//
-//        tseitinModels.length must be_<=(plaistedModels.length)
-//        tseitinModels must be_==(plaistedModels.distinct)
-//        //    println(s"tseitinModels ${tseitinModels.mkString(", ")}")
-//        //    println(s"plaistedModels ${plaistedModels.distinct.mkString(", ")}")
-//        //    println(s"plaistedModels ${plaistedModels.mkString(", ")}")
-//      }
+      def equiModels(f: Prop) = {
+        val tseitinModels = allTseitinModels(f)
+
+        val plaistedModels = allPlaistedModels(f)
+
+        tseitinModels.length must be_<=(plaistedModels.length)
+        formatModels(tseitinModels) === formatModels(plaistedModels)
+      }
 
       def checkModels(a: Seq[Model], b: Seq[Model]) = {
         a.length must be_==(b.length)
@@ -121,24 +105,12 @@ class TseitinTest extends BaseSpecification {
         ))
       }
 
-      //
-      //        "(a & ~b) | (c & ~d & e)" in {
-//          val f = Or(And(Sym("a"), Not(Sym("b"))), And(Sym("c"), Not(Sym("d")), Sym("e")))
-//          "tseitin" in {
-//            Cnf.tseitin(f, plaisted = false).cnf.length must be_==(11 + 1)
-//          }
-//
-//          "plaisted" in {
-//            Cnf.tseitin(f, plaisted = true).cnf.length must be_==(5)
-//          }
-//
-//          "equi models for Tseitin & Plaisted" in {
-//            equiModels(f)
-//          }
-//        }
-//      }
+      def complicated = {
+        val f = Or(And(Sym("a"), Not(Sym("b"))), And(Sym("c"), Not(Sym("d")), Sym("e")))
+        equiModels(f)
+      }
 
-//      "scalac formula" should {
+      //      "scalac formula" should {
 //        def Sym(name: String, index: Int) = Sym(name)
 //
 //        val formula = Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Or(Sym("V1=Z0", 1), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z1", 3)), Not(Sym("V1=null", 2)))), Sym("V1=Z2", 4)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z3", 5)), Not(Sym("V1=null", 2)))), Sym("V1=Z4", 6)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z5", 7)), Not(Sym("V1=null", 2)))), Sym("V1=Z6", 8)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z7", 9)), Not(Sym("V1=null", 2)))), Sym("V1=Z8", 10)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z9", 11)), Not(Sym("V1=null", 2)))), Sym("V1=Z10", 12)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z11", 13)), Not(Sym("V1=null", 2)))), Sym("V1=Z12", 14)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z13", 15)), Not(Sym("V1=null", 2)))), Sym("V1=Z14", 16)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z15", 17)), Not(Sym("V1=null", 2)))), Sym("V1=Z16", 18)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z17", 19)), Not(Sym("V1=null", 2)))), Sym("V1=Z18", 20)), And(And(Not(Sym("V1=null", 2)), Sym("V1=Z.Z19", 21)), Not(Sym("V1=null", 2))))
@@ -176,28 +148,8 @@ class TseitinTest extends BaseSpecification {
       Outer.Aggregate.pOrNotp
     }
 
-    //    "!(p + q)" in {
-//      val f = Not(Or(Sym("p"), Sym("q")))
-//      val models = allTseitinModels(f)
-//      //      println(stringsForModels(models).mkString("\n"))
-//      checkModels(models, Seq(
-//        Map(Sym("p") -> false, Sym("q") -> false)
-//      ))
-//    }
-//
-//    "(a & ~b) | (c & ~d & e)" in {
-//      val f = Or(And(Sym("a"), Not(Sym("b"))), And(Sym("c"), Not(Sym("d")), Sym("e")))
-//      "tseitin" in {
-//        Cnf.tseitin(f, plaisted = false).cnf.length must be_==(11 + 1)
-//      }
-//
-//      "plaisted" in {
-//        Cnf.tseitin(f, plaisted = true).cnf.length must be_==(5)
-//      }
-//
-//      "equi models for Tseitin & Plaisted" in {
-//        equiModels(f)
-//      }
-//    }
+    "(a & ~b) | (c & ~d & e)" in {
+      Outer.Aggregate.complicated
+    }
   }
 }
